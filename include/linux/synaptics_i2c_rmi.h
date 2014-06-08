@@ -16,10 +16,11 @@
 
 #ifndef _LINUX_SYNAPTICS_I2C_RMI_H
 #define _LINUX_SYNAPTICS_I2C_RMI_H
+
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
 #include <linux/input.h>
-#include <linux/leds-pm8921.h>
 #endif
+
 #define SYNAPTICS_I2C_RMI_NAME "synaptics-rmi-ts"
 #define SYNAPTICS_T1007_NAME "synaptics-t1007"
 #define SYNAPTICS_T1021_NAME "synaptics-t1021"
@@ -176,13 +177,13 @@ enum {
 	INTR_SOURCE,
 	FUNCTION
 };
-extern uint8_t touchscreen_is_on(void);
-
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-/* Sweep2Wake */
 extern void sweep2wake_setdev(struct input_dev * input_device);
-extern void sweep2wake_setleddev(struct led_classdev * led_dev);
+extern unsigned int phone_call_stat;
 #endif
+
+extern uint8_t touchscreen_is_on(void);  
+
 extern uint8_t getPowerKeyState(void);
 #endif 
