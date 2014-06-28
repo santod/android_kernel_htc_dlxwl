@@ -1829,6 +1829,13 @@ config MSM_RPCSERVER_WATCHDOG
 	help
 	  The dog_keepalive server handles watchdog events.
 
+config FORCE_FAST_CHARGE
+	bool "Force AC charge mode at will"
+	default y
+	help
+	  A simple sysfs interface to force adapters that
+	  are detected as USB to charge as AC.
+
 config MSM_RPC_WATCHDOG
 	depends on MSM_ONCRPCROUTER
 	default n
@@ -1923,6 +1930,12 @@ config MSM_CPU_FREQ_MIN
 	default 245760
 
 endif # CPU_FREQ_MSM
+
+config CPU_VOLTAGE_TABLE
+	bool "Enable CPU Voltage Table via sysfs for adjustements"
+	default n
+	help
+	  Krait User Votlage Control
 
 config MSM_CPU_AVS
 	bool "Enable software controlled Adaptive Voltage Scaling (AVS)"
@@ -3185,5 +3198,18 @@ config IOEXTENDER
         bool "Enable IOEXTENDER feature"
 	help
 	 To support IOEXTENDER feature
+
+config UPDATE_LCDC_LUT
+        bool "Set initial Qualcomm LCDC lut"
+        default y
+        help
+          Set initial Qualcomm LCDC Look Up Table.
+
++config LCD_KCAL
+        tristate "MSM generic LCDC Calibration"
+        default y
+        help
+          Enable MSM generic LCDC temperature Calibration.
+
 endif
 
