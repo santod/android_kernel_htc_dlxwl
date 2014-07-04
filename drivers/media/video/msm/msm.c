@@ -56,6 +56,7 @@ static struct workqueue_struct *cam_vcm_off_wq;
 static struct work_struct cam_vcm_off_work;
 static int is_actuator_probe_success = 0;
 static void cam_on_check_vcm(void);
+static atomic_t serv_running[MAX_NUM_ACTIVE_CAMERA];
 
 module_param(msm_camera_v4l2_nr, uint, 0644);
 MODULE_PARM_DESC(msm_camera_v4l2_nr, "videoX start number, -1 is autodetect");
@@ -335,6 +336,11 @@ static int msm_server_control(struct msm_cam_server_dev *server_dev,
 	void *ctrlcmd_data;
 	int loop = 0; 
 
+	if (!atomic_read(&serv_running[pcam->server_queue_idx]) && out->type != MSM_V4L2_OPEN) {
+		pr_info("%s: daemon hasn't subscribed yet!\n", __func__);
+		return -EIO;
+	}
+
 	event_qcmd = kzalloc(sizeof(struct msm_queue_cmd), GFP_KERNEL);
 	if (!event_qcmd) {
 		pr_err("%s Insufficient memory. return", __func__);
@@ -522,6 +528,10 @@ static int msm_send_close_server(struct msm_cam_v4l2_device *pcam)
 
 	
 	rc = msm_server_control(&g_server_dev, &ctrlcmd);
+	if (rc == 0)   {
+		pr_info("%s: serv_running[%d] = %d\n", __func__,pcam->server_queue_idx, 0);
+		atomic_set(&serv_running[pcam->server_queue_idx],0);
+	}
 
 	return rc;
 }
@@ -2054,6 +2064,10 @@ static int msm_open(struct file *f)
 				__func__, rc);
 			goto msm_send_open_server_failed;
 		}
+		if (rc == 0)   {
+			pr_info("%s: serv_running[%d] = %d \n", __func__,pcam->server_queue_idx, 1);
+			atomic_set(&serv_running[pcam->server_queue_idx],1);
+		}
 	}
 	mutex_unlock(&pcam->vid_lock);
 	D("%s: end\n", __func__);
@@ -2920,39 +2934,6 @@ static long msm_ioctl_config(struct file *fp, unsigned int cmd,
 	return rc;
 }
 
-static int msm_mmap_config(struct file *fp, struct vm_area_struct *vma)
-{
-	struct msm_cam_config_dev *config_cam = fp->private_data;
-	int rc = 0;
-	int phyaddr;
-	int retval;
-	unsigned long size;
-
-	D("%s: phy_addr=0x%x", __func__, config_cam->mem_map.cookie);
-	phyaddr = (int)config_cam->mem_map.cookie;
-	if (!phyaddr) {
-		pr_err("%s: no physical memory to map", __func__);
-		return -EFAULT;
-	}
-	memset(&config_cam->mem_map, 0,
-		sizeof(struct msm_mem_map_info));
-	size = vma->vm_end - vma->vm_start;
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	retval = remap_pfn_range(vma, vma->vm_start,
-					phyaddr >> PAGE_SHIFT,
-					size, vma->vm_page_prot);
-	if (retval) {
-		pr_err("%s: remap failed, rc = %d",
-					__func__, retval);
-		rc = -ENOMEM;
-		goto end;
-	}
-	D("%s: phy_addr=0x%x: %08lx-%08lx, pgoff %08lx\n",
-			__func__, (uint32_t)phyaddr,
-			vma->vm_start, vma->vm_end, vma->vm_pgoff);
-end:
-	return rc;
-}
 
 static int msm_open_config(struct inode *inode, struct file *fp)
 {
@@ -3050,7 +3031,6 @@ static const struct file_operations msm_fops_config = {
 	.open  = msm_open_config,
 	.poll  = msm_poll_config,
 	.unlocked_ioctl = msm_ioctl_config,
-	.mmap	= msm_mmap_config,
 	.release = msm_close_config,
 };
 

@@ -26,6 +26,9 @@
 #include <linux/mfd/pm8xxx/pwm.h>
 #include <linux/leds-pm8921.h>
 
+#include <linux/input.h>
+#include <linux/synaptics_i2c_rmi.h>
+
 #define SSBI_REG_ADDR_DRV_KEYPAD	0x48
 #define PM8XXX_DRV_KEYPAD_BL_MASK	0xf0
 #define PM8XXX_DRV_KEYPAD_BL_SHIFT	0x04
