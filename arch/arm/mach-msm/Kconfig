@@ -445,6 +445,12 @@ config MACH_TC2
 	help
 	  Support for the HTC TC2
 
+config MACH_ZARA
+	depends on ARCH_MSM8930
+	bool "ZARA"
+	help
+	  Support for the HTC ZARA
+
 config MACH_K2_UL
 	depends on ARCH_MSM8930
 	bool "K2_UL"
@@ -1829,6 +1835,13 @@ config MSM_RPCSERVER_WATCHDOG
 	help
 	  The dog_keepalive server handles watchdog events.
 
+config FORCE_FAST_CHARGE
+	bool "Force AC charge mode at will"
+	default y
+	help
+	  A simple sysfs interface to force adapters that
+	  are detected as USB to charge as AC.
+
 config MSM_RPC_WATCHDOG
 	depends on MSM_ONCRPCROUTER
 	default n
@@ -3143,6 +3156,12 @@ config MSM_NONSMD_PACKET_FILTER
 	  The white TCP port list is updated in attribute
 	  repying on RIL to notify modem.
 
+config MONITOR_STREAMING_PORT_SOCKET
+	bool "monitor streaming port"
+	default n
+	help
+	  Monitor if any streaming port is connected
+
 config IO_FOOTPRINT
 	bool "Trace I/O for each CPU"
 	default n
@@ -3185,5 +3204,18 @@ config IOEXTENDER
         bool "Enable IOEXTENDER feature"
 	help
 	 To support IOEXTENDER feature
+
+config UPDATE_LCDC_LUT
+        bool "Set initial Qualcomm LCDC lut"
+        default y
+        help
+          Set initial Qualcomm LCDC Look Up Table.
+
++config LCD_KCAL
+        tristate "MSM generic LCDC Calibration"
+        default y
+        help
+          Enable MSM generic LCDC temperature Calibration.
+
 endif
 

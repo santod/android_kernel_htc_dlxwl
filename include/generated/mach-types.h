@@ -1228,6 +1228,7 @@ extern unsigned int __machine_arch_type;
 #define MACH_TYPE_T6_TL                4578
 #define MACH_TYPE_T6_DUG               4579
 #define MACH_TYPE_T6_DWG               4580
+#define MACH_TYPE_ZARA                 4605
 
 #ifdef CONFIG_ARCH_EBSA110
 # ifdef machine_arch_type
@@ -15819,6 +15820,18 @@ extern unsigned int __machine_arch_type;
 # define machine_is_t6_dwg()	(machine_arch_type == MACH_TYPE_T6_DWG)
 #else
 # define machine_is_t6_dwg()	(0)
+#endif
+
+#ifdef CONFIG_MACH_ZARA
+# ifdef machine_arch_type
+#  undef machine_arch_type
+#  define machine_arch_type	__machine_arch_type
+# else
+#  define machine_arch_type	MACH_TYPE_ZARA
+# endif
+# define machine_is_zara()	(machine_arch_type == MACH_TYPE_ZARA)
+#else
+# define machine_is_zara()	(0)
 #endif
 
 /*

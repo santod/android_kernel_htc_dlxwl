@@ -481,9 +481,13 @@ static inline void msm_hs_write(struct uart_port *uport, unsigned int offset,
 
 static void msm_hs_dump_register(struct uart_port *uport)
 {
-	unsigned int sr,txfs,rxfs,misr,isr,dmrx,rx_count;
+	unsigned int mr1,mr2,rfwr,dmen,sr,txfs,rxfs,misr,isr,dmrx,ipr,rx_count;
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 
+	mr1 = msm_hs_read(uport, UARTDM_MR1_ADDR);
+	mr2 = msm_hs_read(uport, UARTDM_MR2_ADDR);
+	rfwr = msm_hs_read(uport, UARTDM_RFWR_ADDR);
+	dmen= msm_hs_read(uport, UARTDM_DMEN_ADDR);
 	sr = msm_hs_read(uport, UARTDM_SR_ADDR);
 
 	txfs = msm_hs_read(uport, UARTDM_TXFS_ADDR);
@@ -491,11 +495,12 @@ static void msm_hs_dump_register(struct uart_port *uport)
 	misr = msm_hs_read(uport, UARTDM_MISR_ADDR);
 	isr = msm_hs_read(uport, UARTDM_ISR_ADDR);
 	dmrx =msm_hs_read(uport, UARTDM_DMRX_ADDR);
+	ipr = msm_hs_read(uport, UARTDM_IPR_ADDR);
 	rx_count = msm_hs_read(uport, UARTDM_RX_TOTAL_SNAP_ADDR);
 
-	DbgBuffer_printLog("%s(): clk_state:0x%x clk_req_off_state:0x%x rx.flush:%u, SR:0x%x, TXFS:0x%x, RXFS:0x%x, MISR:0x%x, ISR:0x%x, DMRX:0x%x, SNAP:0x%x\n",
+	DbgBuffer_printLog("%s(): clk_state:0x%x clk_req_off_state:0x%x rx.flush:%u MR1:0x%x, MR2:0x%x, RFWR:0x%x, DMEN:0x%x, SR:0x%x, TXFS:0x%x, RXFS:0x%x, MISR:0x%x, ISR:0x%x, DMRX:0x%x, SNAP:0x%x, IPR:0x%x\n",
 					__func__, msm_uport->clk_state, msm_uport->clk_req_off_state, msm_uport->rx.flush,
-					sr,txfs,rxfs,misr,isr,dmrx,rx_count);
+					mr1,mr2,rfwr,dmen,sr,txfs,rxfs,misr,isr,dmrx,rx_count,ipr);
 
 #ifdef CONFIG_QSC_MODEM
 	if (uport->line == MSM_SERIAL_QSC_HS_ID){
@@ -986,9 +991,6 @@ static void msm_hs_set_termios(struct uart_port *uport,
 		pr_info("%s: Set RFR high so remote uart does not send any data.\n", __func__);
 		msm_hs_write(uport, UARTDM_CR_ADDR, RFR_HIGH);
 	}
-#else
-	
-	msm_hs_write(uport, UARTDM_CR_ADDR, RFR_HIGH);
 #endif
 
 	if (msm_uport->rx.dma_in_flight &&
@@ -1139,9 +1141,6 @@ static void msm_hs_set_termios(struct uart_port *uport,
 		pr_info("%s: Set RFR low so remote uart can send data.\n", __func__);
 		msm_hs_write(uport, UARTDM_CR_ADDR, RFR_LOW);
 	}
-#else
-	
-	msm_hs_write(uport, UARTDM_CR_ADDR, RFR_LOW);
 #endif
 	mb();
 
@@ -1178,9 +1177,10 @@ static void msm_hs_stop_rx_locked(struct uart_port *uport)
 	
 	msm_hs_write(uport, UARTDM_CR_ADDR, STALE_EVENT_DISABLE);
 
+#ifdef CONFIG_QSC_MODEM
 	
 	msm_hs_write(uport, UARTDM_CR_ADDR, RFR_HIGH);
-
+#endif
 	
 	udelay(100);
 
@@ -1850,9 +1850,7 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 	struct circ_buf *tx_buf = &uport->state->xmit;
 	struct msm_hs_tx *tx = &msm_uport->tx;
 	struct msm_hs_rx *rx = &msm_uport->rx;
-#ifdef CONFIG_QSC_MODEM
-	unsigned long isr;
-#endif
+
 	spin_lock_irqsave(&uport->lock, flags);
 
 	if (msm_uport->is_shutdown) {
@@ -1863,11 +1861,8 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 	}
 
 	isr_status = msm_hs_read(uport, UARTDM_MISR_ADDR);
-
-#ifdef CONFIG_QSC_MODEM
-	isr = msm_hs_read(uport, UARTDM_ISR_ADDR);
-	DbgBuffer_printLog("%s: entry, ISR:0x%x\n", __func__, isr);
-#endif
+	DbgBuffer_printLog("%s: entry, isr_status<0x%x>\n", __func__, isr_status);
+	msm_hs_dump_register(uport);
 
 	
 	if (isr_status & UARTDM_ISR_RXLEV_BMSK) {

@@ -32,13 +32,6 @@
 #include <asm/gpio.h>
 #include <linux/input/mt.h>
 #include <linux/pl_sensor.h>
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-#include <linux/ctype.h>
-#include <linux/input/sweep2wake.h>
-#endif
-#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
-#include <linux/input/doubletap2wake.h>
-#endif
 #include <linux/async.h>
 #include <linux/firmware.h>
 #include <linux/kthread.h>
@@ -146,10 +139,6 @@ struct synaptics_ts_data {
 	uint8_t block_touch_event;
 };
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-int pocket_detect = 1;
-#endif
-
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void synaptics_ts_early_suspend(struct early_suspend *h);
 static void synaptics_ts_late_resume(struct early_suspend *h);
@@ -167,15 +156,7 @@ static int syn_pdt_scan(struct synaptics_ts_data *ts, int num_page);
 static int synaptics_init_panel(struct synaptics_ts_data *ts);
 
 static irqreturn_t synaptics_irq_thread(int irq, void *ptr);
-bool scr_suspended = false;
-extern uint8_t touchscreen_is_on(void)
-{
-  if (scr_suspended == false)
-  {
-    return 1;
-  }
-  return 0;
-} 
+
 extern unsigned int get_tamper_sf(void);
 
 static DEFINE_MUTEX(syn_block_mutex);
@@ -213,38 +194,6 @@ static void syn_handle_block_touch(struct synaptics_ts_data *ts, int enable)
 	}
 }
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-static int __init get_pocket_detect_opt(char *pd)
-{
-	if (strcmp(pd, "0") == 0) {
-		pocket_detect = 0;
-	} else if (strcmp(pd, "1") == 0) {
-		pocket_detect = 1;
-	} else {
-		pocket_detect = 1;
-	}
-	return 1;
-}
-
-__setup("pd=", get_pocket_detect_opt); 
-#endif
-#ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
-static int __init get_dt2w_opt(char *dt2w)
-{
-	if (strcmp(dt2w, "0") == 0) {
-		dt2w_switch = 0;
-	} else if (strcmp(dt2w, "1") == 0) {
-		dt2w_switch = 1;
-	} else if (strcmp(dt2w, "2") == 0) {
-		dt2w_switch = 2;
-	} else {
-		dt2w_switch = 0;
-	}
-	return 1;
-}
-
-__setup("dt2w=", get_dt2w_opt); 
-#endif
 static void syn_page_select(struct i2c_client *client, uint8_t page)
 {
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
@@ -258,7 +207,7 @@ static void syn_page_select(struct i2c_client *client, uint8_t page)
 static int i2c_syn_read(struct i2c_client *client, uint16_t addr, uint8_t *data, uint16_t length)
 {
 	uint8_t retry, buf;
-#define SYANPTICS_I2C_RETRY 10
+
 	struct i2c_msg msg[] = {
 		{
 			.addr = client->addr,
@@ -277,17 +226,19 @@ static int i2c_syn_read(struct i2c_client *client, uint16_t addr, uint8_t *data,
 
 	mutex_lock(&syn_mutex);
 	syn_page_select(client, addr >> 8);
-	for (retry = 0; retry < SYANPTICS_I2C_RETRY; retry++) {
+	for (retry = 0; retry < SYN_I2C_RETRY_TIMES; retry++) {
 		if (i2c_transfer(client->adapter, msg, 2) == 2)
 			break;
-	if (retry == SYANPTICS_I2C_RETRY) {
-		printk(KERN_INFO "[TP] i2c_read retry over %d\n",
-			SYANPTICS_I2C_RETRY);
-		return -EIO;
-	} else
-		msleep(10);
+		hr_msleep(10);
 	}
 	mutex_unlock(&syn_mutex);
+
+	if (retry == SYN_I2C_RETRY_TIMES) {
+		printk(KERN_INFO "[TP] i2c_read retry over %d\n",
+			SYN_I2C_RETRY_TIMES);
+		return -EIO;
+	}
+
 	return 0;
 }
 
@@ -924,10 +875,13 @@ static int syn_config_update(struct synaptics_ts_data *ts, int attr)
 	uint32_t crc_checksum;
 	int ret;
 
-	crc_checksum =
-		syn_crc((uint16_t *)ts->config, SYN_CONFIG_SIZE / 2 - 2);
-	memcpy(&ts->config[SYN_CONFIG_SIZE - 4], &crc_checksum, 4);
-	printk(KERN_INFO "[TP] CRC = %X\n" , syn_crc((uint16_t *)ts->config, SYN_CONFIG_SIZE / 2 - 2));
+	if (ts->config != NULL)
+	{
+		crc_checksum =
+			syn_crc((uint16_t *)ts->config, SYN_CONFIG_SIZE / 2 - 2);
+		memcpy(&ts->config[SYN_CONFIG_SIZE - 4], &crc_checksum, 4);
+		printk(KERN_INFO "[TP] CRC = %X\n" , syn_crc((uint16_t *)ts->config, SYN_CONFIG_SIZE / 2 - 2));
+	}
 
 	if (ts->tw_pin_mask == 0) {
 		ret = enable_flash_programming(ts, attr);
@@ -1768,27 +1722,6 @@ static DEVICE_ATTR(reset, (S_IWUSR),
 	0, syn_reset);
 
 #endif
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-static ssize_t synaptics_pocket_detect_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-	count += sprintf(buf, "%d\n", pocket_detect);
-	return count;
-}
-
-static ssize_t synaptics_pocket_detect_dump(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (buf[0] >= '0' && buf[0] <= '1' && buf[1] == '\n')
-                if (pocket_detect != buf[0] - '0')
-		        pocket_detect = buf[0] - '0';
-
-	return count;
-}
-
-static DEVICE_ATTR(pocket_detect, 0666,
-	synaptics_pocket_detect_show, synaptics_pocket_detect_dump);
-
-#endif
 
 enum SR_REG_STATE{
 	ALLOCATE_DEV_FAIL = -2,
@@ -1798,7 +1731,6 @@ enum SR_REG_STATE{
 
 static char *vk_name = "virtualkeys.sr_touchscreen";
 static struct kobj_attribute vk_dev;
-
 
 static int register_sr_touch_device(void)
 {
@@ -1858,6 +1790,24 @@ static int register_sr_touch_device(void)
 	return SUCCESS;
 }
 
+static ssize_t get_en_sr(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct synaptics_ts_data *ts = gl_ts;
+	size_t count = 0;
+
+	if (ts->sr_input_dev)
+	{
+		count += sprintf(buf + count, "%s ", ts->sr_input_dev->name);
+		count += sprintf(buf + count, "\n");
+	}
+	else
+		count += sprintf(buf + count, "0\n");
+
+
+	return count;
+}
+
 static ssize_t set_en_sr(struct device *dev, struct device_attribute *attr,
 						const char *buf, size_t count)
 {
@@ -1871,118 +1821,8 @@ static ssize_t set_en_sr(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-static DEVICE_ATTR(sr_en, S_IWUSR, 0, set_en_sr);
+static DEVICE_ATTR(sr_en, (S_IWUSR|S_IRUGO), get_en_sr, set_en_sr);
 
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-static ssize_t s2w_sweep2wake_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-
-	count += sprintf(buf, "%d\n", s2w_switch);
-
-	return count;
-}
-
-static ssize_t s2w_sweep2wake_dump(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (buf[0] >= '0' && buf[0] <= '1' && buf[1] == '\n')
-                if (s2w_switch != buf[0] - '0')
-		        s2w_switch = buf[0] - '0';
-
-	return count;
-}
-
-static DEVICE_ATTR(sweep2wake, (S_IWUSR|S_IRUGO),
-	s2w_sweep2wake_show, s2w_sweep2wake_dump);
-
-static ssize_t s2w_s2w_s2sonly_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-
-	count += sprintf(buf, "%d\n", s2w_s2sonly);
-
-	return count;
-}
-
-static ssize_t s2w_s2w_s2sonly_dump(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (buf[0] >= '0' && buf[0] <= '1' && buf[1] == '\n')
-                if (s2w_s2sonly != buf[0] - '0')
-		        s2w_s2sonly = buf[0] - '0';
-
-	return count;
-}
-
-static DEVICE_ATTR(s2w_s2sonly, (S_IWUSR|S_IRUGO),
-	s2w_s2w_s2sonly_show, s2w_s2w_s2sonly_dump);
-
-static ssize_t s2w_version_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-
-	count += sprintf(buf, "%s\n", DRIVER_VERSION);
-
-	return count;
-}
-
-static ssize_t s2w_version_dump(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	return count;
-}
-
-static DEVICE_ATTR(sweep2wake_version, (S_IWUSR|S_IRUGO),
-	s2w_version_show, s2w_version_dump);
-
-
-static ssize_t dt2w_doubletap2wake_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-
-	count += sprintf(buf, "%d\n", dt2w_switch);
-
-	return count;
-}
-
-static ssize_t dt2w_doubletap2wake_dump(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (buf[0] >= '0' && buf[0] <= '2' && buf[1] == '\n')
-                if (dt2w_switch != buf[0] - '0')
-		        dt2w_switch = buf[0] - '0';
-
-	return count;
-}
-
-static DEVICE_ATTR(doubletap2wake, (S_IWUSR|S_IRUGO),
-	dt2w_doubletap2wake_show, dt2w_doubletap2wake_dump);
-
-static ssize_t dt2w_version_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	size_t count = 0;
-
-	count += sprintf(buf, "%s\n", DRIVER_VERSION);
-
-	return count;
-}
-
-static ssize_t dt2w_version_dump(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	return count;
-}
-
-static DEVICE_ATTR(doubletap2wake_version, (S_IWUSR|S_IRUGO),
-	dt2w_version_show, dt2w_version_dump);
-
-#endif
 static struct kobject *android_touch_kobj;
 
 static int synaptics_touch_sysfs_init(void)
@@ -2019,33 +1859,7 @@ static int synaptics_touch_sysfs_init(void)
 		if (sysfs_create_file(android_touch_kobj, &dev_attr_diag.attr) ||
 			sysfs_create_file(android_touch_kobj, &dev_attr_disable_cbc.attr))
 			return -ENOMEM;
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_pocket_detect.attr);
-	if (ret) {
-		printk(KERN_ERR "%s: sysfs_create_file failed\n", __func__);
-		return ret;
-	} 
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_doubletap2wake.attr);
-	if (ret) {
-		pr_warn("%s: sysfs_create_file failed for doubletap2wake\n", __func__);
-	}
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_doubletap2wake_version.attr);
-	if (ret) {
-		pr_warn("%s: sysfs_create_file failed for doubletap2wake_version\n", __func__);
-	}
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_sweep2wake.attr);
-	if (ret) {
-		pr_warn("%s: sysfs_create_file failed for sweep2wake\n", __func__);
-	}
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_s2w_s2sonly.attr);
-	if (ret) {
-		pr_warn("%s: sysfs_create_file failed for s2w_s2sonly\n", __func__);
-	}
-	ret = sysfs_create_file(android_touch_kobj, &dev_attr_sweep2wake_version.attr);
-	if (ret) {
-		pr_warn("%s: sysfs_create_file failed for sweep2wake_version\n", __func__);
-	}
-#endif
+
 #ifdef SYN_WIRELESS_DEBUG
 	ret= gpio_request(ts->gpio_irq, "synaptics_attn");
 	if (ret) {
@@ -2092,14 +1906,6 @@ static void synaptics_touch_sysfs_remove(void)
 	sysfs_remove_file(android_touch_kobj, &dev_attr_htc_event.attr);
 	sysfs_remove_file(android_touch_kobj, &dev_attr_reset.attr);
 	sysfs_remove_file(android_touch_kobj, &dev_attr_sr_en.attr);
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-	sysfs_remove_file(android_touch_kobj, &dev_attr_sweep2wake.attr);
-	sysfs_remove_file(android_touch_kobj, &dev_attr_sweep2wake_version.attr);
-	sysfs_remove_file(android_touch_kobj, &dev_attr_s2w_s2sonly.attr);
-	sysfs_remove_file(android_touch_kobj, &dev_attr_pocket_detect.attr);
-	sysfs_remove_file(android_touch_kobj, &dev_attr_doubletap2wake.attr);
-	sysfs_remove_file(android_touch_kobj, &dev_attr_doubletap2wake_version.attr);
-#endif
 #ifdef SYN_WIRELESS_DEBUG
 	sysfs_remove_file(android_touch_kobj, &dev_attr_enabled.attr);
 #endif
@@ -2217,7 +2023,8 @@ static int synaptics_init_panel(struct synaptics_ts_data *ts)
 static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 {
 	int ret;
-	uint8_t buf[ts->finger_support * 8 ], noise_index[10], noise_state = 0;
+	uint8_t buf[ts->finger_support * 8 ], noise_index[10];
+	uint16_t temp_im = 0, temp_cidim = 0;
 	static int x_pos[10] = {0}, y_pos[10] = {0};
 
 	memset(buf, 0x0, sizeof(buf));
@@ -2229,15 +2036,9 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 		ret = i2c_syn_read(ts->client,
 			get_address_base(ts, ts->finger_func_idx, DATA_BASE), buf, sizeof(buf));
 		ret = i2c_syn_read(ts->client,
-			get_address_base(ts, 0x54, DATA_BASE) + 8, &noise_state, 1);
-		if (noise_state == 2) {
-			ret = i2c_syn_read(ts->client,
-				get_address_base(ts, 0x54, DATA_BASE) + 4, noise_index, sizeof(noise_index));
-			ts->debug_log_level |= BIT(17);
-		} else {
-			if (!ts->enable_noise_log)
-				ts->debug_log_level &= ~BIT(17);
-		}
+			get_address_base(ts, 0x54, DATA_BASE) + 4, noise_index, sizeof(noise_index));
+		temp_im = (noise_index[1] <<8) | noise_index[0];
+		temp_cidim = (noise_index[6] <<8) | noise_index[5];
 	}
 	if (ret < 0) {
 		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
@@ -2318,15 +2119,17 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						finger_data[i][0] = ts->layout[1];
 					if(ts->width_factor && ts->height_factor){
 						printk(KERN_INFO
-							"[TP] Screen:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d\n",
+							"[TP] Screen:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 							i+1, (x_pos[i]*ts->width_factor)>>SHIFT_BITS,
 							(y_pos[i]*ts->height_factor)>>SHIFT_BITS,
-							finger_data[i][2], finger_data[i][3]);
+							finger_data[i][2], finger_data[i][3],
+							temp_im, temp_cidim, noise_index[9], noise_index[4]);
 					} else {
 						printk(KERN_INFO
-							"[TP] Raw:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d\n",
+							"[TP] Raw:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 							i+1, x_pos[i], y_pos[i],
-							finger_data[i][2], finger_data[i][3]);
+							finger_data[i][2], finger_data[i][3],
+							temp_im, temp_cidim, noise_index[9], noise_index[4]);
 					}
 				}
 				base += 5;
@@ -2463,7 +2266,6 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 					if ((finger_pressed & BIT(i)) == BIT(i)) {
 						if (ts->block_touch_event == 0) {
 							if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
-
 								if (ts->support_htc_event) {
 									input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE,
 										finger_data[i][3] << 16 | finger_data[i][2]);
@@ -2520,15 +2322,17 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						if ((finger_press_changed & BIT(i)) && ts->debug_log_level & BIT(3)) {
 							if(ts->width_factor && ts->height_factor){
 								printk(KERN_INFO
-									"[TP] Screen:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d\n",
+									"[TP] Screen:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 									i+1, (finger_data[i][0]*ts->width_factor)>>SHIFT_BITS,
 									(finger_data[i][1]*ts->height_factor)>>SHIFT_BITS,
-									finger_data[i][2], finger_data[i][3]);
+									finger_data[i][2], finger_data[i][3],
+									temp_im, temp_cidim, noise_index[9], noise_index[4]);
 							} else {
 								printk(KERN_INFO
-									"[TP] Raw:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d\n",
+									"[TP] Raw:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 									i+1, finger_data[i][0], finger_data[i][1],
-									finger_data[i][2], finger_data[i][3]);
+									finger_data[i][2], finger_data[i][3],
+									temp_im, temp_cidim, noise_index[9], noise_index[4]);
 							}
 							if ((ts->block_touch_time_near | ts->block_touch_time_far) && ts->block_touch_event)
 								printk(KERN_INFO "[TP] Block This Event!!\n");
@@ -3508,6 +3312,7 @@ static int syn_probe_init(void *arg)
 	if (rmi_char_dev_register())
 		printk(KERN_INFO "[TP] %s: error register char device", __func__);
 #endif
+
 	printk(KERN_INFO "[TP] synaptics_ts_probe: Start touchscreen %s in %s mode\n", ts->input_dev->name, ts->use_irq ? "interrupt" : "polling");
 
 	return 0;
@@ -3607,7 +3412,6 @@ err_check_functionality_failed:
 static int synaptics_ts_remove(struct i2c_client *client)
 {
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
-
 	unregister_early_suspend(&ts->early_suspend);
 	if (ts->use_irq)
 		free_irq(client->irq, ts);
@@ -3637,43 +3441,14 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	int ret = 0;
 	uint8_t data = 0, update = 0;
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
-#if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE) || defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
-	bool prevent_sleep = true;
-#endif
-#if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
-#endif
-#if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
-	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
-#endif
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-		scr_suspended = true;
-        if (s2w_switch > 0 &&  dt2w_switch > 0 ) {
-                //screen off, enable_irq_wake
-                scr_suspended = true;
-                enable_irq_wake(client->irq);
-        }
-#endif
 	printk(KERN_INFO "[TP] %s: enter\n", __func__);
 
 	if (ts->use_irq) {
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-                if (s2w_switch == 0 &&  dt2w_switch == 0) {
-#endif
 		disable_irq(client->irq);
 		ts->irq_enabled = 0;
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-		}
-#endif
 	} else {
 		hrtimer_cancel(&ts->timer);
 		ret = cancel_work_sync(&ts->work);
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        if (s2w_switch == 0 &&  dt2w_switch == 0) {
-                if (ret && ts->use_irq) /* if work was pending disable-count is now 2 */
-                        enable_irq(client->irq);
-        }
-#endif
 	}
 
 	if(ts->psensor_detection) {
@@ -3782,9 +3557,7 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	}
 	else if(ts->psensor_detection)
 		ts->psensor_phone_enable = 1;
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        if (s2w_switch == 0 &&  dt2w_switch == 0) {
-#endif
+
 #ifdef CONFIG_PWRKEY_STATUS_API
 	if (ts->packrat_number < SYNAPTICS_FW_NOCAL_PACKRAT)
 		printk(KERN_INFO "[TP][PWR][STATE] get power key state = %d\n", getPowerKeyState());
@@ -3873,9 +3646,7 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	if ((ts->block_touch_time_near | ts->block_touch_time_far) && ts->block_touch_event) {
 		syn_handle_block_touch(ts, 0);
 	}
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        }
-#endif
+
 	return 0;
 }
 
@@ -3883,27 +3654,8 @@ static int synaptics_ts_resume(struct i2c_client *client)
 {
 	int ret;
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
-#if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE) || defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
-	bool prevent_sleep = false;
-#endif
-#if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
-#endif
-#if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
-	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
-#endif
-
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE  
-		scr_suspended = false;
-        if (s2w_switch > 0) {
-                scr_suspended = false;
-                disable_irq_wake(client->irq);
-        }
-#endif
 	printk(KERN_INFO "[TP] %s: enter\n", __func__);
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        if (s2w_switch == 0 && dt2w_switch == 0) {
-#endif
+
 	if (ts->power) {
 		ts->power(1);
 		hr_msleep(100);
@@ -3922,9 +3674,7 @@ static int synaptics_ts_resume(struct i2c_client *client)
 		if (ret < 0)
 			i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "wake up", __func__);
 	}
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        }
-#endif
+
 	if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
 		if (ts->support_htc_event) {
 			input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE, 0);
@@ -3950,18 +3700,14 @@ static int synaptics_ts_resume(struct i2c_client *client)
 			ts->psensor_phone_enable = 1;
 		}
 	}
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        if (s2w_switch == 0 && dt2w_switch == 0) {
-#endif
+
 	if (ts->use_irq) {
 		enable_irq(client->irq);
 		ts->irq_enabled = 1;
 	}
 	else
 		hrtimer_start(&ts->timer, ktime_set(1, 0), HRTIMER_MODE_REL);
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-        }
-#endif
+
 	return 0;
 }
 
@@ -4017,5 +3763,6 @@ static void __exit synaptics_ts_exit(void)
 
 module_init(synaptics_ts_init);
 module_exit(synaptics_ts_exit);
+
 MODULE_DESCRIPTION("Synaptics Touchscreen Driver");
 MODULE_LICENSE("GPL");
