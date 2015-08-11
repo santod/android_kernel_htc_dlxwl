@@ -51,7 +51,7 @@
 #else
 #include <linux/wifi_tiwlan.h>
 #endif
-#endif 
+#endif /* CONFIG_WIFI_CONTROL_FUNC */
 
 #ifdef CUSTOMER_HW_ONE
 #include <wl_iw.h>
@@ -119,7 +119,7 @@ static int wl_android_wifi_call = 0;
 static int last_auto_channel = 6;
 static struct mutex wl_wificall_mutex;
 static struct mutex wl_wifionoff_mutex;
-char wl_abdroid_gatewaybuf[8+1]; 
+char wl_abdroid_gatewaybuf[8+1]; /* HTC_KlocWork */
 #ifdef BCM4329_LOW_POWER
 extern int LowPowerMode;
 extern bool hasDLNA;
@@ -127,14 +127,29 @@ extern bool allowMulticast;
 extern int dhd_set_keepalive(int value);
 #endif
 static int active_level = -80;
-static int active_period = 20000; 
+static int active_period = 20000; /*in mini secs*/
 static int wl_android_active_expired = 0;
 struct timer_list *wl_android_active_timer = NULL;
 extern int msm_otg_setclk( int on);
+#ifdef CONFIG_MSM8930_ONLY
 static int otg_clk_enabled = 0;
+#endif
 static int assoc_count_buff = 0;
 extern int sta_event_sent;
 
+/* traffic indicate parameters */
+/* framework will obtain RSSI every 3000 ms*/
+/* The throughput mapping to packet count is as below:
+ *  2Mbps: ~280 packets / second
+ *  4Mbps: ~540 packets / second
+ *  6Mbps: ~800 packets / second
+ *  8Mbps: ~1200 packets / second
+ * 12Mbps: ~1500 packets / second
+ * 14Mbps: ~1800 packets / second
+ * 16Mbps: ~2000 packets / second
+ * 18Mbps: ~2300 packets / second
+ * 20Mbps: ~2600 packets / second
+ */
 #define TRAFFIC_SUPER_HIGH_WATER_MARK	2600
 #define TRAFFIC_HIGH_WATER_MARK			2300
 #define TRAFFIC_LOW_WATER_MARK			256
@@ -211,11 +226,15 @@ static uint old_tx_stat_chk_num;
 #ifdef BRCM_WPSAP
 #define CMD_SET_WSEC		"SET_WSEC"
 #define CMD_WPS_RESULT		"WPS_RESULT"
-#endif 
+#endif /* BRCM_WPSAP */
 #define CMD_PFN_REMOVE		"PFN_REMOVE"
 #define CMD_GET_AUTO_CHANNEL	"AUTOCHANNELGET"
 
 #endif
+/*
+ * Android private command strings, PLEASE define new private commands here
+ * so they can be updated easily in the future (if needed)
+ */
 
 #define CMD_START		"START"
 #define CMD_STOP		"STOP"
@@ -240,7 +259,7 @@ static uint old_tx_stat_chk_num;
 #define CMD_P2P_SET_NOA		"P2P_SET_NOA"
 #if !defined WL_ENABLE_P2P_IF
 #define CMD_P2P_GET_NOA			"P2P_GET_NOA"
-#endif 
+#endif /* WL_ENABLE_P2P_IF */
 #define CMD_P2P_SD_OFFLOAD		"P2P_SD_"
 #define CMD_P2P_SET_PS		"P2P_SET_PS"
 #define CMD_SET_AP_WPS_P2P_IE 		"SET_AP_WPS_P2P_IE"
@@ -250,9 +269,10 @@ static uint old_tx_stat_chk_num;
 
 #if defined(WL_SUPPORT_AUTO_CHANNEL)
 #define CMD_GET_BEST_CHANNELS	"GET_BEST_CHANNELS"
-#endif 
+#endif /* WL_SUPPORT_AUTO_CHANNEL */
 
 
+/* CCX Private Commands */
 #ifdef BCMCCX
 #define CMD_GETCCKM_RN		"get cckm_rn"
 #define CMD_SETCCKM_KRK		"set cckm_krk"
@@ -265,21 +285,27 @@ static uint old_tx_stat_chk_num;
 #define CMD_PNOENABLE_SET	"PNOFORCE"
 #define CMD_PNODEBUG_SET	"PNODEBUG"
 #define CMD_WLS_BATCHING	"WLS_BATCHING"
-#endif 
+#endif /* PNO_SUPPORT */
 
 #define CMD_OKC_SET_PMK		"SET_PMK"
 #define CMD_OKC_ENABLE		"OKC_ENABLE"
 
 #define	CMD_HAPD_MAC_FILTER	"HAPD_MAC_FILTER"
+/* hostap mac mode */
 #define MACLIST_MODE_DISABLED   0
 #define MACLIST_MODE_DENY       1
 #define MACLIST_MODE_ALLOW      2
 
+/* max number of assoc list */
 #define MAX_NUM_OF_ASSOCLIST    64
 
+/* max number of mac filter list
+ * restrict max number to 10 as maximum cmd string size is 255
+ */
 #define MAX_NUM_MAC_FILT        10
 
 
+/* miracast related definition */
 #define MIRACAST_MODE_OFF	0
 #define MIRACAST_MODE_SOURCE	1
 #define MIRACAST_MODE_SINK	2
@@ -320,20 +346,25 @@ static int wl_genl_init(void);
 static int wl_genl_deinit(void);
 
 extern struct net init_net;
+/* attribute policy: defines which attribute has which type (e.g int, char * etc)
+ * possible values defined in net/netlink.h
+ */
 static struct nla_policy wl_genl_policy[BCM_GENL_ATTR_MAX + 1] = {
 	[BCM_GENL_ATTR_STRING] = { .type = NLA_NUL_STRING },
 	[BCM_GENL_ATTR_MSG] = { .type = NLA_BINARY },
 };
 
 #define WL_GENL_VER 1
+/* family definition */
 static struct genl_family wl_genl_family = {
-	.id = GENL_ID_GENERATE,    
+	.id = GENL_ID_GENERATE,    /* Genetlink would generate the ID */
 	.hdrsize = 0,
-	.name = "bcm-genl",        
-	.version = WL_GENL_VER,     
+	.name = "bcm-genl",        /* Netlink I/F for Android */
+	.version = WL_GENL_VER,     /* Version Number */
 	.maxattr = BCM_GENL_ATTR_MAX,
 };
 
+/* commands: mapping between the command enumeration and the actual function */
 struct genl_ops wl_genl_ops = {
 	.cmd = BCM_GENL_CMD_MSG,
 	.flags = 0,
@@ -343,12 +374,15 @@ struct genl_ops wl_genl_ops = {
 };
 
 static struct genl_multicast_group wl_genl_mcast = {
-	.id = GENL_ID_GENERATE,    
+	.id = GENL_ID_GENERATE,    /* Genetlink would generate the ID */
 	.name = "bcm-genl-mcast",
 };
 
-#endif 
+#endif /* WL_GENL */
 
+/**
+ * Extern function declarations (TODO: move them to dhd_linux.h)
+ */
 void dhd_customer_gpio_wlan_ctrl(int onoff);
 int dhd_dev_reset(struct net_device *dev, uint8 flag);
 int dhd_dev_init_ioctl(struct net_device *dev);
@@ -365,26 +399,36 @@ int wl_cfg80211_get_p2p_noa(struct net_device *net, char* buf, int len)
 { return 0; }
 int wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len)
 { return 0; }
-#endif 
+#endif /* WK_CFG80211 */
 extern int dhd_os_check_if_up(void *dhdp);
 #ifdef BCMLXSDMMC
 extern void *bcmsdh_get_drvdata(void);
-#endif 
+#endif /* BCMLXSDMMC */
 
 
 #ifdef ENABLE_4335BT_WAR
 extern int bcm_bt_lock(int cookie);
 extern void bcm_bt_unlock(int cookie);
-static int lock_cookie_wifi = 'W' | 'i'<<8 | 'F'<<16 | 'i'<<24;	
-#endif 
+static int lock_cookie_wifi = 'W' | 'i'<<8 | 'F'<<16 | 'i'<<24;	/* cookie is "WiFi" */
+#endif /* ENABLE_4335BT_WAR */
 
 extern bool ap_fw_loaded;
 #if defined(CUSTOMER_HW2)
 extern char iface_name[IFNAMSIZ];
 #endif 
 
+/**
+ * Local (static) functions and variables
+ */
 
+/* Initialize g_wifi_on to 1 so dhd_bus_start will be called for the first
+ * time (only) in dhd_open, subsequential wifi on will be handled by
+ * wl_android_wifi_on
+ */
 
+/**
+ * Local (static) function definitions
+ */
 static int wl_android_get_link_speed(struct net_device *net, char *command, int total_len)
 {
 	int link_speed;
@@ -395,7 +439,7 @@ static int wl_android_get_link_speed(struct net_device *net, char *command, int 
 	if (error)
 		return -1;
 
-	
+	/* Convert Kbps to Android Mbps */
 	link_speed = link_speed / 1000;
 	bytes_written = snprintf(command, total_len, "LinkSpeed %d", link_speed);
 	DHD_INFO(("%s: command result is %s\n", __FUNCTION__, command));
@@ -494,6 +538,7 @@ static int wl_android_get_band(struct net_device *dev, char *command, int total_
 
 
 #if defined(PNO_SUPPORT) && !defined(WL_SCHED_SCAN) && !defined(CUSTOMER_HW_ONE)
+//#ifdef PNO_SUPPORT
 #define PARAM_SIZE 50
 #define VALUE_SIZE 50
 static int
@@ -630,7 +675,7 @@ static int wl_android_set_pno_setup(struct net_device *dev, char *command, int t
 		'2',
 		0x00
 		};
-#endif 
+#endif /* PNO_SET_DEBUG */
 	DHD_PNO(("%s: command=%s, len=%d\n", __FUNCTION__, command, total_len));
 
 	if (total_len < (strlen(CMD_PNOSETUP_SET) + sizeof(cmd_tlv_t))) {
@@ -698,8 +743,8 @@ static int wl_android_set_pno_setup(struct net_device *dev, char *command, int t
 exit_proc:
 	return res;
 }
-#endif 
-#endif 
+#endif /* !WL_SCHED_SCAN */
+#endif /* PNO_SUPPORT  */
 
 static int wl_android_get_p2p_dev_addr(struct net_device *ndev, char *command, int total_len)
 {
@@ -776,11 +821,11 @@ static int wl_android_get_assoc_res_ies(struct net_device *dev, char *command)
 		resp_ies_len = assoc_info.resp_len - sizeof(struct dot11_assoc_resp);
 	}
 
-	
+	/* first 4 bytes are ie len */
 	memcpy(command, &resp_ies_len, sizeof(u32));
 	bytes_written = sizeof(u32);
 
-	
+	/* get the association resp IE's if there are any */
 	if (resp_ies_len) {
 		error = wldev_iovar_getbuf(dev, "assoc_resp_ies", NULL, 0,
 			buf, WL_ASSOC_INFO_MAX, NULL);
@@ -795,7 +840,7 @@ static int wl_android_get_assoc_res_ies(struct net_device *dev, char *command)
 	return bytes_written;
 }
 
-#endif 
+#endif /* BCMCCX */
 
 #ifndef CUSTOMER_HW_ONE
 static int
@@ -807,31 +852,31 @@ wl_android_set_ap_mac_list(struct net_device *dev, int macmode, struct maclist *
 		sizeof(struct ether_addr) + sizeof(uint)] = {0};
 	struct maclist *assoc_maclist = (struct maclist *)mac_buf;
 
-	
+	/* set filtering mode */
 	if ((ret = wldev_ioctl(dev, WLC_SET_MACMODE, &macmode, sizeof(macmode), true)) != 0) {
 		DHD_ERROR(("%s : WLC_SET_MACMODE error=%d\n", __FUNCTION__, ret));
 		return ret;
 	}
 	if (macmode != MACLIST_MODE_DISABLED) {
-		
+		/* set the MAC filter list */
 		if ((ret = wldev_ioctl(dev, WLC_SET_MACLIST, maclist,
 			sizeof(int) + sizeof(struct ether_addr) * maclist->count, true)) != 0) {
 			DHD_ERROR(("%s : WLC_SET_MACLIST error=%d\n", __FUNCTION__, ret));
 			return ret;
 		}
-		
+		/* get the current list of associated STAs */
 		assoc_maclist->count = MAX_NUM_OF_ASSOCLIST;
 		if ((ret = wldev_ioctl(dev, WLC_GET_ASSOCLIST, assoc_maclist,
 			sizeof(mac_buf), false)) != 0) {
 			DHD_ERROR(("%s : WLC_GET_ASSOCLIST error=%d\n", __FUNCTION__, ret));
 			return ret;
 		}
-		
+		/* do we have any STA associated?  */
 		if (assoc_maclist->count) {
-			
+			/* iterate each associated STA */
 			for (i = 0; i < assoc_maclist->count; i++) {
 				match = 0;
-				
+				/* compare with each entry */
 				for (j = 0; j < maclist->count; j++) {
 					DHD_INFO(("%s : associated="MACDBG " list="MACDBG "\n",
 					__FUNCTION__, MAC2STRDBG(assoc_maclist->ea[i].octet),
@@ -842,8 +887,8 @@ wl_android_set_ap_mac_list(struct net_device *dev, int macmode, struct maclist *
 						break;
 					}
 				}
-				
-				
+				/* do conditional deauth */
+				/*   "if not in the allow list" or "if in the deny list" */
 				if ((macmode == MACLIST_MODE_ALLOW && !match) ||
 					(macmode == MACLIST_MODE_DENY && match)) {
 					scb_val_t scbval;
@@ -863,6 +908,10 @@ wl_android_set_ap_mac_list(struct net_device *dev, int macmode, struct maclist *
 	return ret;
 }
 
+/*
+ * HAPD_MAC_FILTER mac_mode mac_cnt mac_addr1 mac_addr2
+ *
+ */
 static int
 wl_android_set_mac_address_filter(struct net_device *dev, const char* str)
 {
@@ -873,10 +922,10 @@ wl_android_set_mac_address_filter(struct net_device *dev, const char* str)
 	struct maclist *list;
 	char eabuf[ETHER_ADDR_STR_LEN];
 
-	
-	
+	/* string should look like below (macmode/macnum/maclist) */
+	/*   1 2 00:11:22:33:44:55 00:11:22:33:44:ff  */
 
-	
+	/* get the MAC filter mode */
 	macmode = bcm_atoi(strsep((char**)&str, " "));
 
 	if (macmode < MACLIST_MODE_DISABLED || macmode > MACLIST_MODE_ALLOW) {
@@ -890,14 +939,14 @@ wl_android_set_mac_address_filter(struct net_device *dev, const char* str)
 			__FUNCTION__, macnum));
 		return -1;
 	}
-	
+	/* allocate memory for the MAC list */
 	list = (struct maclist*)kmalloc(sizeof(int) +
 		sizeof(struct ether_addr) * macnum, GFP_KERNEL);
 	if (!list) {
 		DHD_ERROR(("%s : failed to allocate memory\n", __FUNCTION__));
 		return -1;
 	}
-	
+	/* prepare the MAC list */
 	list->count = htod32(macnum);
 	bzero((char *)eabuf, ETHER_ADDR_STR_LEN);
 	for (i = 0; i < list->count; i++) {
@@ -910,7 +959,7 @@ wl_android_set_mac_address_filter(struct net_device *dev, const char* str)
 		}
 		DHD_INFO(("%s : %d/%d MACADDR=%s", __FUNCTION__, i, list->count, eabuf));
 	}
-	
+	/* set the list */
 	if ((ret = wl_android_set_ap_mac_list(dev, macmode, list)) != 0)
 		DHD_ERROR(("%s : Setting MAC list failed error=%d\n", __FUNCTION__, ret));
 
@@ -921,6 +970,9 @@ wl_android_set_mac_address_filter(struct net_device *dev, const char* str)
 #endif
 
 
+/**
+ * Global function definitions (declared in wl_android.h)
+ */
 
 int wl_android_wifi_on(struct net_device *dev)
 {
@@ -994,7 +1046,7 @@ int wl_android_wifi_off(struct net_device *dev)
 {
 	int ret = 0;
 
-	printf("%s in\n", __FUNCTION__); 
+	printf("%s in\n", __FUNCTION__); /* BRCM TBD */
 	if (!dev) {
 		DHD_ERROR(("%s: dev is null\n", __FUNCTION__));
 		return -EINVAL;
@@ -1005,7 +1057,7 @@ int wl_android_wifi_off(struct net_device *dev)
 	bcmsdh_oob_intr_set(FALSE);
 #endif
 
-	
+	/* turn off btcoex if on */
 	wl_cfg80211_set_btcoex_done(dev);
 
 	bcm_mdelay(100);
@@ -1143,6 +1195,9 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 	u16 kflags = in_atomic() ? GFP_ATOMIC : GFP_KERNEL;
 	s32 err = BCME_OK;
 
+	/* Check the VSIE (Vendor Specific IE) which was added.
+	 *  If exist then send IOVAR to delete it
+	 */
 	if (wl_cfg80211_ibss_vsie_delete(dev) != BCME_OK) {
 		return -EINVAL;
 	}
@@ -1166,19 +1221,19 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 		WL_ERR(("IE memory alloc failed\n"));
 		return -ENOMEM;
 	}
-	
+	/* Copy the vndr_ie SET command ("add"/"del") to the buffer */
 	strncpy(vndr_ie->cmd, "add", VNDR_IE_CMD_LEN - 1);
 	vndr_ie->cmd[VNDR_IE_CMD_LEN - 1] = '\0';
 
-	
+	/* Set the IE count - the buffer contains only 1 IE */
 	iecount = htod32(1);
 	memcpy((void *)&vndr_ie->vndr_ie_buffer.iecount, &iecount, sizeof(s32));
 
-	
+	/* Set packet flag to indicate that BEACON's will contain this IE */
 	pktflag = htod32(VNDR_IE_BEACON_FLAG | VNDR_IE_PRBRSP_FLAG);
 	memcpy((void *)&vndr_ie->vndr_ie_buffer.vndr_ie_list[0].pktflag, &pktflag,
 		sizeof(u32));
-	
+	/* Set the IE ID */
 	vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.id = (uchar) DOT11_MNG_PROPR_ID;
 
 	memcpy(&vndr_ie->vndr_ie_buffer.vndr_ie_list[0].vndr_ie_data.oui, &ie_buf,
@@ -1197,7 +1252,7 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 		}
 		return -ENOMEM;
 	}
-	memset(ioctl_buf, 0, WLC_IOCTL_MEDLEN);	
+	memset(ioctl_buf, 0, WLC_IOCTL_MEDLEN);	/* init the buffer */
 	err = wldev_iovar_setbuf(dev, "ie", vndr_ie, tot_len, ioctl_buf, WLC_IOCTL_MEDLEN, NULL);
 
 
@@ -1208,7 +1263,7 @@ int wl_android_set_ibss_beacon_ouidata(struct net_device *dev, char *command, in
 		}
 	}
 	else {
-		
+		/* do NOT free 'vndr_ie' for the next process */
 		wl_cfg80211_ibss_vsie_set_buffer(vndr_ie, tot_len);
 	}
 
@@ -1326,35 +1381,38 @@ wl_android_set_miracast(struct net_device *dev, char *command, int total_len)
 
 	switch (mode) {
 	case MIRACAST_MODE_SOURCE:
-		
+		/* setting mchan_algo to platform specific value */
 		config.iovar = "mchan_algo";
 		config.param = MIRACAST_MCHAN_ALGO;
 		ret = wl_android_iolist_add(dev, &miracast_resume_list, &config);
 		if (ret)
 			goto resume;
 
-		
+		/* setting mchan_bw to platform specific value */
 		config.iovar = "mchan_bw";
 		config.param = MIRACAST_MCHAN_BW;
 		ret = wl_android_iolist_add(dev, &miracast_resume_list, &config);
 		if (ret)
 			goto resume;
 
-		
+		/* setting apmdu to platform specific value */
 		config.iovar = "ampdu_mpdu";
 		config.param = MIRACAST_AMPDU_SIZE;
 		ret = wl_android_iolist_add(dev, &miracast_resume_list, &config);
 		if (ret)
 			goto resume;
-		
+		/* FALLTROUGH */
+		/* Source mode shares most configurations with sink mode.
+		 * Fall through here to avoid code duplication
+		 */
 	case MIRACAST_MODE_SINK:
-		
+		/* disable internal roaming */
 		config.iovar = "roam_off";
 		config.param = 1;
 		ret = wl_android_iolist_add(dev, &miracast_resume_list, &config);
 		if (ret)
 			goto resume;
-		
+		/* tunr off pm */
 		val = 0;
 		config.iovar = NULL;
 		config.ioctl = WLC_GET_PM;
@@ -1440,10 +1498,10 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wl_android_wifi_off(net);
 	}
 	else if (strnicmp(command, CMD_SCAN_ACTIVE, strlen(CMD_SCAN_ACTIVE)) == 0) {
-		
+		/* TBD: SCAN-ACTIVE */
 	}
 	else if (strnicmp(command, CMD_SCAN_PASSIVE, strlen(CMD_SCAN_PASSIVE)) == 0) {
-		
+		/* TBD: SCAN-PASSIVE */
 	}
 	else if (strnicmp(command, CMD_RSSI, strlen(CMD_RSSI)) == 0) {
 		bytes_written = wl_android_get_rssi(net, command, priv_cmd.total_len);
@@ -1451,6 +1509,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_LINKSPEED, strlen(CMD_LINKSPEED)) == 0) {
 		bytes_written = wl_android_get_link_speed(net, command, priv_cmd.total_len);
 	}
+//HTC_WIFI_START
 #ifdef PKT_FILTER_SUPPORT
 	else if (strnicmp(command, CMD_RXFILTER_START, strlen(CMD_RXFILTER_START)) == 0) {
 #if 1
@@ -1469,7 +1528,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 #endif
 	}
 	else if (strnicmp(command, CMD_RXFILTER_ADD, strlen(CMD_RXFILTER_ADD)) == 0) {
-		
+		/*HTC_CSP_START*/
 #ifdef CUSTOMER_HW_ONE
 #ifdef BCM4329_LOW_POWER
 		if (LowPowerMode == 1) {
@@ -1480,7 +1539,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			}
 		}
 #endif
-		
+		//wl_android_set_pktfilter(net, (struct dd_pkt_filter_s *)&command[32]);
 		DHD_ERROR(("RXFILTER-ADD MULTICAST filter\n"));
 		wl_android_enable_pktfilter(net,1);
 		snprintf(command, 3, "OK");
@@ -1501,7 +1560,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			}
 		}
 #endif
-		
+		//wl_android_set_pktfilter(net, (struct dd_pkt_filter_s *)&command[32]);
 		DHD_ERROR(("RXFILTER-REMOVE MULTICAST filter\n"));
 		wl_android_enable_pktfilter(net,0);
 		snprintf(command, 3, "OK");
@@ -1511,12 +1570,13 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = net_os_rxfilter_add_remove(net, FALSE, filter_num);
 #endif
 	}
-#endif 
+#endif /* PKT_FILTER_SUPPORT */
+//HTC_WIFI_END
 	else if (strnicmp(command, CMD_BTCOEXSCAN_START, strlen(CMD_BTCOEXSCAN_START)) == 0) {
-		
+		/* TBD: BTCOEXSCAN-START */
 	}
 	else if (strnicmp(command, CMD_BTCOEXSCAN_STOP, strlen(CMD_BTCOEXSCAN_STOP)) == 0) {
-		
+		/* TBD: BTCOEXSCAN-STOP */
 	}
 	else if (strnicmp(command, CMD_BTCOEXMODE, strlen(CMD_BTCOEXMODE)) == 0) {
 #ifdef WL_CFG80211
@@ -1526,11 +1586,11 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		uint mode = *(command + strlen(CMD_BTCOEXMODE) + 1) - '0';
 
 		if (mode == 1)
-			net_os_enable_packet_filter(net, 0); 
+			net_os_enable_packet_filter(net, 0); /* DHCP starts */
 		else
-			net_os_enable_packet_filter(net, 1); 
-#endif 
-#endif 
+			net_os_enable_packet_filter(net, 1); /* DHCP ends */
+#endif /* PKT_FILTER_SUPPORT */
+#endif /* WL_CFG80211 */
 	}
 	else if (strnicmp(command, CMD_SETSUSPENDOPT, strlen(CMD_SETSUSPENDOPT)) == 0) {
 		bytes_written = wl_android_set_suspendopt(net, command, priv_cmd.total_len);
@@ -1544,7 +1604,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		s32 ret = 0;
 		if ((ret = wl_cfg80211_set_band(net, band)) < 0) {
 			if (ret == BCME_UNSUPPORTED) {
-				
+				/* If roam_var is unsupported, fallback to the original method */
 				WL_ERR(("WL_HOST_BAND_MGMT defined, "
 					"but roam_band iovar unsupported in the firmware\n"));
 			} else {
@@ -1556,13 +1616,13 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			bytes_written = wldev_set_band(net, band);
 #else
 		bytes_written = wldev_set_band(net, band);
-#endif 
+#endif /* WL_HOST_BAND_MGMT */
 	}
 	else if (strnicmp(command, CMD_GETBAND, strlen(CMD_GETBAND)) == 0) {
 		bytes_written = wl_android_get_band(net, command, priv_cmd.total_len);
 	}
 #ifdef WL_CFG80211
-	
+	/* CUSTOMER_SET_COUNTRY feature is define for only GGSM model */
 	else if (strnicmp(command, CMD_COUNTRY, strlen(CMD_COUNTRY)) == 0) {
 #ifdef CUSTOMER_HW_ONE
 		char country_code[3];
@@ -1574,7 +1634,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 #endif
 		bytes_written = wldev_set_country(net, country_code, true, true);
 	}
-#endif 
+#endif /* WL_CFG80211 */
 
 
 #if defined(PNO_SUPPORT) && !defined(WL_SCHED_SCAN) && !defined(CUSTOMER_HW_ONE)
@@ -1585,7 +1645,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_PNOSETUP_SET, strlen(CMD_PNOSETUP_SET)) == 0) {
 		bytes_written = wl_android_set_pno_setup(net, command, priv_cmd.total_len);
 	}
-#endif 
+#endif /* !WL_SCHED_SCAN */
 	else if (strnicmp(command, CMD_PNOENABLE_SET, strlen(CMD_PNOENABLE_SET)) == 0) {
 		int enable = *(command + strlen(CMD_PNOENABLE_SET) + 1) - '0';
 		bytes_written = (enable)? 0 : dhd_dev_pno_stop_for_ssid(net);
@@ -1593,7 +1653,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_WLS_BATCHING, strlen(CMD_WLS_BATCHING)) == 0) {
 		bytes_written = wls_parse_batching_cmd(net, command, priv_cmd.total_len);
 	}
-#endif 
+#endif /* PNO_SUPPORT */
 	else if (strnicmp(command, CMD_P2P_DEV_ADDR, strlen(CMD_P2P_DEV_ADDR)) == 0) {
 		bytes_written = wl_android_get_p2p_dev_addr(net, command, priv_cmd.total_len);
 	}
@@ -1609,7 +1669,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		int len;
 
 		cmd_id = strsep((char **)&buf, " ");
-		
+		/* if buf == NULL, means no arg */
 		if (buf == NULL)
 			len = 0;
 		else
@@ -1617,12 +1677,12 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 
 		bytes_written = wl_cfg80211_sd_offload(net, cmd_id, buf, len);
 	}
-#endif 
+#endif /* WL_SDO */
 #if !defined WL_ENABLE_P2P_IF
 	else if (strnicmp(command, CMD_P2P_GET_NOA, strlen(CMD_P2P_GET_NOA)) == 0) {
 		bytes_written = wl_cfg80211_get_p2p_noa(net, command, priv_cmd.total_len);
 	}
-#endif 
+#endif /* WL_ENABLE_P2P_IF */
 	else if (strnicmp(command, CMD_P2P_SET_PS, strlen(CMD_P2P_SET_PS)) == 0) {
 		int skip = strlen(CMD_P2P_SET_PS) + 1;
 		bytes_written = wl_cfg80211_set_p2p_ps(net, command + skip,
@@ -1635,7 +1695,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wl_cfg80211_set_wps_p2p_ie(net, command + skip,
 			priv_cmd.total_len - skip, *(command + skip - 2) - '0');
 	}
-#endif 
+#endif /* WL_CFG80211 */
 	else if (strnicmp(command, CMD_OKC_SET_PMK, strlen(CMD_OKC_SET_PMK)) == 0)
 		bytes_written = wl_android_set_pmk(net, command, priv_cmd.total_len);
 	else if (strnicmp(command, CMD_OKC_ENABLE, strlen(CMD_OKC_ENABLE)) == 0)
@@ -1650,14 +1710,14 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_GET_ASSOC_RES_IES, strlen(CMD_GET_ASSOC_RES_IES)) == 0) {
 		bytes_written = wl_android_get_assoc_res_ies(net, command);
 	}
-#endif 
+#endif /* BCMCCX */
 #if defined(WL_SUPPORT_AUTO_CHANNEL)
 	else if (strnicmp(command, CMD_GET_BEST_CHANNELS,
 		strlen(CMD_GET_BEST_CHANNELS)) == 0) {
 		bytes_written = wl_cfg80211_get_best_channels(net, command,
 			priv_cmd.total_len);
 	}
-#endif 
+#endif /* WL_SUPPORT_AUTO_CHANNEL */
 #ifndef CUSTOMER_HW_ONE
 	else if (strnicmp(command, CMD_HAPD_MAC_FILTER, strlen(CMD_HAPD_MAC_FILTER)) == 0) {
 		int skip = strlen(CMD_HAPD_MAC_FILTER) + 1;
@@ -1799,8 +1859,8 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		else
 			wl_iw_send_priv_event(net, "L2PE_FAIL");
 	}
-#endif 
-#endif 
+#endif /* BRCM_WPSAP */
+#endif /* APSTA_CONCURRENT */
 #endif
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
@@ -1842,7 +1902,7 @@ int wl_android_init(void)
 
 #ifdef ENABLE_INSMOD_NO_FW_LOAD
 	dhd_download_fw_on_driverload = FALSE;
-#endif 
+#endif /* ENABLE_INSMOD_NO_FW_LOAD */
 #if defined(CUSTOMER_HW2)
 	if (!iface_name[0]) {
 		memset(iface_name, 0, IFNAMSIZ);
@@ -1871,7 +1931,7 @@ int wl_android_exit(void)
 #endif
 #ifdef WL_GENL
 	wl_genl_deinit();
-#endif 
+#endif /* WL_GENL */
 
 	return ret;
 }
@@ -1882,28 +1942,29 @@ void wl_android_post_init(void)
 #ifdef ENABLE_4335BT_WAR
 	bcm_bt_unlock(lock_cookie_wifi);
 	printk("%s: btlock released\n", __FUNCTION__);
-#endif 
+#endif /* ENABLE_4335BT_WAR */
 
 	if (!dhd_download_fw_on_driverload) {
-		
+		/* Call customer gpio to turn off power with WL_REG_ON signal */
 		dhd_customer_gpio_wlan_ctrl(WLAN_RESET_OFF);
 		g_wifi_on = FALSE;
 	}
 }
 
 #ifdef WL_GENL
+/* Generic Netlink Initializaiton */
 static int wl_genl_init(void)
 {
 	int ret;
 
 	WL_DBG(("GEN Netlink Init\n\n"));
 
-	
+	/* register new family */
 	ret = genl_register_family(&wl_genl_family);
 	if (ret != 0)
 		goto failure;
 
-	
+	/* register functions (commands) of the new family */
 	ret = genl_register_ops(&wl_genl_family, &wl_genl_ops);
 	if (ret != 0) {
 		WL_ERR(("register ops failed: %i\n", ret));
@@ -1926,6 +1987,7 @@ failure:
 	return -1;
 }
 
+/* Generic netlink deinit */
 static int wl_genl_deinit(void)
 {
 	if (genl_unregister_ops(&wl_genl_family, &wl_genl_ops) < 0)
@@ -1951,7 +2013,7 @@ s32 wl_event_to_bcm_event(u16 event_type)
 		case WLC_E_P2PO_DEL_DEVICE:
 			event = BCM_E_DEV_LOST;
 			break;
-	
+	/* Above events are supported from BCM Supp ver 47 Onwards */
 
 		default:
 			WL_ERR(("Event not supported\n"));
@@ -1974,7 +2036,7 @@ wl_genl_send_msg(
 	void *msg;
 	u32 attr_type = 0;
 	bcm_event_hdr_t *hdr = NULL;
-	int mcast = 1; 
+	int mcast = 1; /* By default sent as mutlicast type */
 	int pid = 0;
 	u8 *ptr = NULL, *p = NULL;
 	u32 tot_len = sizeof(bcm_event_hdr_t) + subhdr_len + len;
@@ -1983,7 +2045,7 @@ wl_genl_send_msg(
 
 	WL_DBG(("Enter \n"));
 
-	
+	/* Decide between STRING event and Data event */
 	if (event_type == 0)
 		attr_type = BCM_GENL_ATTR_STRING;
 	else
@@ -2003,6 +2065,9 @@ wl_genl_send_msg(
 
 
 	if (attr_type == BCM_GENL_ATTR_STRING) {
+		/* Add a BCM_GENL_MSG attribute. Since it is specified as a string.
+		 * make sure it is null terminated
+		 */
 		if (subhdr || subhdr_len) {
 			WL_ERR(("No sub hdr support for the ATTR STRING type \n"));
 			ret =  -EINVAL;
@@ -2015,9 +2080,9 @@ wl_genl_send_msg(
 			goto out;
 		}
 	} else {
-		
+		/* ATTR_MSG */
 
-		
+		/* Create a single buffer for all */
 		p = ptr = kzalloc(tot_len, kflags);
 		if (!ptr) {
 			ret = -ENOMEM;
@@ -2025,19 +2090,19 @@ wl_genl_send_msg(
 			goto out;
 		}
 
-		
+		/* Include the bcm event header */
 		hdr = (bcm_event_hdr_t *)ptr;
 		hdr->event_type = wl_event_to_bcm_event(event_type);
 		hdr->len = len + subhdr_len;
 		ptr += sizeof(bcm_event_hdr_t);
 
-		
+		/* Copy subhdr (if any) */
 		if (subhdr && subhdr_len) {
 			memcpy(ptr, subhdr, subhdr_len);
 			ptr += subhdr_len;
 		}
 
-		
+		/* Copy the data */
 		if (buf && len) {
 			memcpy(ptr, buf, len);
 		}
@@ -2051,9 +2116,9 @@ wl_genl_send_msg(
 
 	if (mcast) {
 		int err = 0;
-		
+		/* finalize the message */
 		genlmsg_end(skb, msg);
-		
+		/* NETLINK_CB(skb).dst_group = 1; */
 		if ((err = genlmsg_multicast(skb, 0, wl_genl_mcast.id, GFP_ATOMIC)) < 0)
 			WL_ERR(("genlmsg_multicast for attr(%d) failed. Error:%d \n",
 				attr_type, err));
@@ -2061,12 +2126,12 @@ wl_genl_send_msg(
 			WL_DBG(("Multicast msg sent successfully. attr_type:%d len:%d \n",
 				attr_type, tot_len));
 	} else {
-		NETLINK_CB(skb).dst_group = 0; 
+		NETLINK_CB(skb).dst_group = 0; /* Not in multicast group */
 
-		
+		/* finalize the message */
 		genlmsg_end(skb, msg);
 
-		
+		/* send the message back */
 		if (genlmsg_unicast(&init_net, skb, pid) < 0)
 			WL_ERR(("genlmsg_unicast failed\n"));
 	}
@@ -2105,20 +2170,23 @@ wl_genl_handle_msg(
 		WL_ERR(("Invalid data\n"));
 		return -EINVAL;
 	} else {
-		
+		/* Handle the data */
 #if !defined(WL_CFG80211_P2P_DEV_IF) && (LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0))
 		WL_DBG(("%s: Data received from pid (%d) \n", __func__,
 			info->snd_pid));
 #else
 		WL_DBG(("%s: Data received from pid (%d) \n", __func__,
 			info->snd_portid));
-#endif 
+#endif /* !WL_CFG80211_P2P_DEV_IF && (LINUX_VERSION < VERSION(3, 6, 0) */
 	}
 
 	return 0;
 }
-#endif 
+#endif /* WL_GENL */
 
+/**
+ * Functions for Android WiFi card detection
+ */
 #if defined(CONFIG_WIFI_CONTROL_FUNC)
 
 bool g_wifi_poweron = FALSE;
@@ -2143,7 +2211,7 @@ int wl_android_wifictrl_func_add(void)
 	}
 	g_wifidev_registered = 1;
 
-	
+	/* Waiting callback after platform_driver_register is done or exit with error */
 	if (down_timeout(&wifi_control_sem,  msecs_to_jiffies(1000)) != 0) {
 		ret = -EINVAL;
 		DHD_ERROR(("%s: platform_driver_register timeout\n", __FUNCTION__));
@@ -2211,10 +2279,10 @@ int wifi_set_power(int on, unsigned long msec)
 			printk("%s: btlock acquired\n", __FUNCTION__);
 		}
 		else {
-			
+			/* For a exceptional case, release btlock */
 			bcm_bt_unlock(lock_cookie_wifi);
 		}
-#endif 
+#endif /* ENABLE_4335BT_WAR */
 		ret = wifi_control_data->set_power(on);
 	}
 
@@ -2251,7 +2319,7 @@ int wifi_get_mac_addr(unsigned char *buf)
 	}
 	return -EOPNOTSUPP;
 }
-#endif 
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)) */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 void *wifi_get_country_code(char *ccode)
@@ -2264,7 +2332,7 @@ void *wifi_get_country_code(char *ccode)
 	}
 	return NULL;
 }
-#endif 
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) */
 
 static int wifi_set_carddetect(int on)
 {
@@ -2320,13 +2388,13 @@ static int wifi_probe(struct platform_device *pdev)
 	if (wifi_control_data)
 		bus_scale_table = wifi_control_data->bus_scale_table;
 #endif
-	err = wifi_set_power(1, 200);	
+	err = wifi_set_power(1, 200);	/* Power On */
 	if (unlikely(err)) {
 		DHD_ERROR(("%s: set_power failed. err=%d\n", __FUNCTION__, err));
 		wifi_set_power(0, WIFI_TURNOFF_DELAY);
-		
+		/* WL_REG_ON state unknown, Power off forcely */
 	} else {
-		wifi_set_carddetect(1);	
+		wifi_set_carddetect(1);	/* CardDetect (0->1) */
 		g_wifi_poweron = TRUE;
 	}
 
@@ -2344,8 +2412,8 @@ static int wifi_remove(struct platform_device *pdev)
 	wifi_control_data = wifi_ctrl;
 
 	if (g_wifi_poweron) {
-	wifi_set_power(0, WIFI_TURNOFF_DELAY);	
-	wifi_set_carddetect(0);	
+	wifi_set_power(0, WIFI_TURNOFF_DELAY);	/* Power Off */
+	wifi_set_carddetect(0);	/* CardDetect (1->0) */
 		g_wifi_poweron = FALSE;
 		list_for_each_entry_safe(cur, q, &miracast_resume_list, list) {
 			list_del(&cur->list);
@@ -2366,7 +2434,7 @@ static int wifi_suspend(struct platform_device *pdev, pm_message_t state)
 	DHD_TRACE(("##> %s\n", __FUNCTION__));
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY) && 1
 	bcmsdh_oob_intr_set(0);
-#endif 
+#endif /* (OOB_INTR_ONLY) */
 	return 0;
 }
 
@@ -2376,7 +2444,7 @@ static int wifi_resume(struct platform_device *pdev)
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39)) && defined(OOB_INTR_ONLY) && 1
 	if (dhd_os_check_if_up(bcmsdh_get_drvdata()))
 		bcmsdh_oob_intr_set(1);
-#endif 
+#endif /* (OOB_INTR_ONLY) */
 	return 0;
 }
 
@@ -2425,7 +2493,7 @@ static void wifi_del_dev(void)
 	platform_driver_unregister(&wifi_device);
 	platform_driver_unregister(&wifi_device_legacy);
 }
-#endif 
+#endif /* defined(CONFIG_WIFI_CONTROL_FUNC) */
 
 #ifdef CUSTOMER_HW_ONE
 static int wl_android_get_tx_fail(struct net_device *dev, char *command, int total_len)
@@ -2489,7 +2557,7 @@ void wlan_lock_perf(void)
 	if (!is_perf_lock_active(wlan_perf_lock))
 		perf_lock(wlan_perf_lock);
 #endif
-	
+	/* Configure BUS performance parameters for MAX bandwidth */
 	if (bus_perf_client) {
 		ret = msm_bus_scale_client_update_request(
 				bus_perf_client, 1);
@@ -2506,7 +2574,7 @@ void wlan_unlock_perf(void)
 	if (is_perf_lock_active(wlan_perf_lock))
 		perf_unlock(wlan_perf_lock);
 #endif
-	
+	/* Configure BUS performance parameters to default */
 	if (bus_perf_client) {
 		ret = msm_bus_scale_client_update_request(
 				bus_perf_client, 0);
@@ -2565,25 +2633,38 @@ void wlan_unlock_multi_core(struct net_device *dev)
 	wl_cfg80211_send_priv_event(dev, "PERF_UNLOCK");
 }
 
+void set_otg_clk(int lock){
+#ifdef CONFIG_MSM8930_ONLY
+    if(lock == otg_clk_enabled)
+        return;
+    printf("set_otg_clk otg clk with %d",lock);
+    otg_clk_enabled = lock;
+    msm_otg_setclk(lock);
+#else
+    return;
+#endif
+}
+
 void wl_android_traffic_monitor(struct net_device *dev)
 {
 	unsigned long rx_packets_count = 0;
 	unsigned long tx_packets_count = 0;
 	unsigned long traffic_diff = 0;
     unsigned long jiffies_diff = 0;
+    struct wl_priv *wl = wlcfg_drv_priv;
 
-	
+	/*for Traffic High/Low indication */
 	dhd_get_txrx_stats(dev, &rx_packets_count, &tx_packets_count);
 	current_traffic_count = rx_packets_count + tx_packets_count;
 
 	if ((current_traffic_count >= last_traffic_count && jiffies > last_traffic_count_jiffies) || screen_off || !sta_connected) {
-        
+        /* +++ 20130624 wright, Release perf lock when screen on */
         if (screen_off || !sta_connected) {
             printf("set traffic = 0 and relase performace lock when %s", screen_off? "screen off": "disconnected");
             traffic_diff = 0;
         }
         else {
-        
+        /* --- 20130624 wright, Release perf lock when screen on */
             jiffies_diff = jiffies - last_traffic_count_jiffies;
             if (jiffies_diff < 7*HZ) {
                 traffic_diff = (current_traffic_count - last_traffic_count) / jiffies_diff * HZ;
@@ -2594,20 +2675,14 @@ void wl_android_traffic_monitor(struct net_device *dev)
         }
 
 		if (traffic_diff < TRAFFIC_LOW_WATER_MARK) {
-			if (otg_clk_enabled) {
-				printf("unlocking otg clk");
-				msm_otg_setclk(0);
-				otg_clk_enabled = 0;
-			}
+            if(!wl && !(wl->p2p) && !wl->p2p->vif_created)
+                set_otg_clk(0);
 		} else if (TRAFFIC_LOW_WATER_MARK <= traffic_diff && traffic_diff < TRAFFIC_OTG_WATER_MARK) {
-			
+			/* do nothing */
 			;
 		} else if (traffic_diff >= TRAFFIC_OTG_WATER_MARK) {
-			if (!otg_clk_enabled) {
-				printf("locking otg clk");
-				otg_clk_enabled = 1;
-				msm_otg_setclk(1);
-			}
+            if(!wl && !(wl->p2p) && !wl->p2p->vif_created)
+                set_otg_clk(1);
 		}
 
         switch (traffic_stats_flag) {
@@ -2653,7 +2728,7 @@ void wl_android_traffic_monitor(struct net_device *dev)
 	}
     last_traffic_count_jiffies = jiffies;
 	last_traffic_count = current_traffic_count;
-	
+	/*End of Traffic High/Low indication */
 }
 
 #if defined(HTC_TX_TRACKING)
@@ -2661,11 +2736,11 @@ static int wl_android_set_tx_tracking(struct net_device *dev, char *command, int
 {
         int bytes_written = 0;
         char iovbuf[32];
-        
-        uint tx_stat_chk = 0; 
-        uint tx_stat_chk_prd = 5; 
-        uint tx_stat_chk_ratio = 8; 
-        uint tx_stat_chk_num = 5; 
+        /* tx stat check, if (txerr/(txframe+txerr) > tx_stat_chk_ratio, send up event */
+        uint tx_stat_chk = 0; /* disable tx status check */
+        uint tx_stat_chk_prd = 5; /* check period 5 seconds */
+        uint tx_stat_chk_ratio = 8; /* check fail rate >= 80% */
+        uint tx_stat_chk_num = 5; /* check only if there is more than 5 packet send out in check period */
 
         sscanf(command + strlen(CMD_TX_TRACKING) + 1, "%u %u %u %u", &tx_stat_chk, &tx_stat_chk_prd, &tx_stat_chk_ratio, &tx_stat_chk_num);
                 printf("wl_android_set_tx_tracking command=%s", command);
@@ -2785,7 +2860,7 @@ static int wl_android_set_ap_txpower(struct net_device *dev, char *command, int 
 
 	ap_txpower = bcm_atoi(command + strlen(CMD_AP_TXPOWER_SET) + 1);
 	if (ap_txpower == 0) {
-		
+		/* get the default txpower */
 		memset(iovbuf, 0, sizeof(iovbuf));
 		bcm_mkiovar("qtxpower", (char *)&ap_txpower_orig, 4, iovbuf, sizeof(iovbuf));
 		wldev_ioctl(dev, WLC_GET_VAR, &iovbuf, sizeof(iovbuf), 0);
@@ -2794,7 +2869,7 @@ static int wl_android_set_ap_txpower(struct net_device *dev, char *command, int 
 	}
 
 	if (ap_txpower == 99) {
-		
+		/* set to default value */
 		ap_txpower = ap_txpower_orig;
 	} else {
 		ap_txpower |= WL_TXPWR_OVERRIDE;
@@ -2866,7 +2941,7 @@ static int wl_android_low_rssi_set(struct net_device *dev, char *command, int to
 
 	return bytes_written;
 }
-#endif  
+#endif /* WLC_E_RSSI_LOW */ 
 
 int wl_android_black_list_match(char *mac)
 {
@@ -2903,6 +2978,8 @@ wl_android_get_assoc_sta_list(struct net_device *dev, char *buf, int len)
 	memset(mac_lst, 0, sizeof(mac_lst));
 	p_mac_str = mac_lst;
 
+	/* format: "count|sta 1, sta2, ..."
+	*/
 
 	p_mac_str += snprintf(p_mac_str, 80, "%d|", maclist->count);
 
@@ -2990,7 +3067,7 @@ static int wl_android_set_ap_mac_list(struct net_device *dev, void *buf)
 				i, white_maclist->ea[i].octet[0], white_maclist->ea[i].octet[1], white_maclist->ea[i].octet[2],
 				white_maclist->ea[i].octet[3], white_maclist->ea[i].octet[4], white_maclist->ea[i].octet[5]);
 
-		
+		/* set the black list */
 		bcopy(black_maclist, &android_ap_black_list, sizeof(android_ap_black_list));
 
 		printf("Black List, size %d:\n", sizeof(android_ap_black_list));
@@ -2999,7 +3076,7 @@ static int wl_android_set_ap_mac_list(struct net_device *dev, void *buf)
 				i, android_ap_black_list.ea[i].octet[0], android_ap_black_list.ea[i].octet[1], android_ap_black_list.ea[i].octet[2],
 				android_ap_black_list.ea[i].octet[3], android_ap_black_list.ea[i].octet[4], android_ap_black_list.ea[i].octet[5]);
 
-		
+		/* deauth if there is associated station not in list */
 		assoc_maclist->count = 8;
 		wldev_ioctl(dev, WLC_GET_ASSOCLIST, assoc_maclist, 256, 0);
 		if (assoc_maclist->count) {
@@ -3149,7 +3226,7 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 	pm_val = bcm_atoi(command + strlen(CMD_POWER_MODE_SET) + 1);
 
 		switch (pm_val) {
-		
+		/* Android normal usage */
 		case 0:
 			dhdhtc_set_power_control(0, DHDHTC_POWER_CTRL_ANDROID_NORMAL);
 			dhdhtc_update_wifi_power_mode(screen_off);
@@ -3164,7 +3241,7 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
             wldev_iovar_setint(dev, "mpc", mpc);
             wldev_ioctl(dev, WLC_SET_PM, &force_pm, sizeof(force_pm), 1);
 			break;
-		 
+		 /* for web loading page */
 		case 10:
 			wl_android_deactive();
 			dhdhtc_set_power_control(0, DHDHTC_POWER_CTRL_BROWSER_LOAD_PAGE);
@@ -3177,7 +3254,7 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 
 				if (*timer) {
 					mod_timer(*timer, jiffies + active_period * HZ / 1000);
-					
+					/* printf("mod_timer\n"); */
 				} else {
 					*timer = kmalloc(sizeof(struct timer_list), GFP_KERNEL);
 					if (*timer) {
@@ -3185,14 +3262,14 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 						init_timer(*timer);
 						(*timer)->expires = jiffies + active_period * HZ / 1000;
 						add_timer(*timer);
-						
+						/* printf("add_timer\n"); */
 					}
 				}
 				dhdhtc_set_power_control(1, DHDHTC_POWER_CTRL_BROWSER_LOAD_PAGE);
 				dhdhtc_update_wifi_power_mode(screen_off);
 			}
 			break;
-		 
+		 /* for best performance configure */
 		case 20:
 			dhdhtc_set_power_control(0, DHDHTC_POWER_CTRL_USER_CONFIG);
 			dhdhtc_update_wifi_power_mode(screen_off);
@@ -3201,7 +3278,7 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 			dhdhtc_set_power_control(1, DHDHTC_POWER_CTRL_USER_CONFIG);
 			dhdhtc_update_wifi_power_mode(screen_off);
 			break;
-		 
+		 /* for fota download */
 		case 30:
 			dhdhtc_set_power_control(0, DHDHTC_POWER_CTRL_FOTA_DOWNLOADING);
 			dhdhtc_update_wifi_power_mode(screen_off);
@@ -3210,7 +3287,7 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 			dhdhtc_set_power_control(1, DHDHTC_POWER_CTRL_FOTA_DOWNLOADING);
 			dhdhtc_update_wifi_power_mode(screen_off);
 			break;
-		
+		/* KDDI APK*/
 		case 40:
 			dhdhtc_set_power_control(0, DHDHTC_POWER_CTRL_KDDI_APK);
 			dhdhtc_update_wifi_power_mode(screen_off);
@@ -3220,21 +3297,21 @@ static int wl_android_set_power_mode(struct net_device *dev, char *command, int 
 			dhdhtc_update_wifi_power_mode(screen_off);
 			break;
 
-		case 87: 
+		case 87: /* For wifilock release*/
 			printf("wifilock release\n");
 			dhdcdc_wifiLock = 0;
 			dhdhtc_update_wifi_power_mode(screen_off);
 			dhdhtc_update_dtim_listen_interval(screen_off);
 			break;
 
-		case 88: 
+		case 88: /* For wifilock lock*/
 			printf("wifilock accquire\n");
 			dhdcdc_wifiLock = 1;
 			dhdhtc_update_wifi_power_mode(screen_off);
 			dhdhtc_update_dtim_listen_interval(screen_off);
 			break;
 
-		case 99: 
+		case 99: /* For debug. power active or not while usb plugin */
 			dhdcdc_power_active_while_plugin = !dhdcdc_power_active_while_plugin;
 			dhdhtc_update_wifi_power_mode(screen_off);
 			break;
@@ -3298,6 +3375,9 @@ static int wl_android_set_wificall(struct net_device *ndev, char *command, int t
 	set_val = bcm_atoi(s);
 
 
+	/* 1. change power mode
+	  * 2. change dtim listen interval
+	 */
 
 	switch (set_val) {
 	case 0:
@@ -3436,12 +3516,14 @@ static int wl_android_gateway_add(struct net_device *ndev, char *command, int to
 		sprintf( wl_abdroid_gatewaybuf, "FFFFFFFF");
 
 	DHD_TRACE(("gatewaybuf: %s",wl_abdroid_gatewaybuf));
+/*HTC_CSP_START*/
 #ifdef BCM4329_LOW_POWER
 	if (LowPowerMode == 1) {
 		if (screen_off && !hasDLNA && !allowMulticast)
 			dhd_set_keepalive(1);
 	}
 #endif
+/*HTC_CSP_END*/
 	bytes_written = snprintf(command, total_len, "OK");
 
 	return bytes_written;
@@ -3464,9 +3546,9 @@ static int wl_android_auto_channel(struct net_device *dev, char *command, int to
 	int isup = 0;
 	int bytes_written = 0;
 	int apsta_var = 0;
-	
+	/*HTC_CSP_START*/
 	int band = WLC_BAND_2G;
-	
+	/*HTC_CSP_END*/
 
 	DHD_TRACE(("Enter %s\n", __func__));
 
@@ -3503,21 +3585,21 @@ static int wl_android_auto_channel(struct net_device *dev, char *command, int to
 
 auto_channel_retry:
 	memset(&null_ssid, 0, sizeof(wlc_ssid_t));
-	
-	#if 1 
+	/*HTC_CSP_START*/
+	#if 1 /* For BCM4335 */
 	null_ssid.SSID_len = strlen("");
 	strncpy(null_ssid.SSID, "", null_ssid.SSID_len);
 	#else
 	null_ssid.SSID_len = strlen("test");
 	strncpy(null_ssid.SSID, "test", null_ssid.SSID_len);
 	#endif
-	
+	/*HTC_CSP_END*/
 
 	res |= wldev_ioctl(dev, WLC_SET_SPECT_MANAGMENT, &spec, sizeof(spec), 1);
 	res |= wldev_ioctl(dev, WLC_SET_SSID, &null_ssid, sizeof(null_ssid), 1);
-	
+	/*HTC_CSP_START*/
 	res |= wldev_ioctl(dev, WLC_SET_BAND, &band, sizeof(band), 1);
-	
+	/*HTC_CSP_END*/
 	res |= wldev_ioctl(dev, WLC_UP, &updown, sizeof(updown), 1);
 
 	memset(&null_ssid, 0, sizeof(wlc_ssid_t));
@@ -3531,7 +3613,7 @@ auto_channel_retry:
 		DHD_ERROR(("request channel: %d to %d ,request->count =%d\n", start_channel, end_channel, request->count));
 		for (i = 0; i < request->count; i++) {
 			request->element[i] = CH20MHZ_CHSPEC((start_channel + i));
-			
+			/* request->element[i] = (start_channel + i); */
 			printf("request.element[%d]=0x%x\n", i, request->element[i]);
 		}
 	}
@@ -3554,7 +3636,7 @@ get_channel_retry:
 		else {
 			DHD_ERROR(("can't get auto channel sel, err = %d, "
 						"chosen = %d\n", res, chosen));
-			chosen = 6; 
+			chosen = 6; /*Alan: Set default channel when get auto channel failed*/
 		}
 	}
 

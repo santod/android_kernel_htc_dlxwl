@@ -1003,9 +1003,10 @@ static ssize_t attr_enable_store(struct device *dev,
 	if (strict_strtoul(buf, 10, &val))
 		return -EINVAL;
 
-	if (val)
+	if (val) {
 		r3gd20_enable(gyro);
-	else
+		r3gd20_update_odr(gyro, gyro->pdata->poll_interval);
+	} else
 		r3gd20_disable(gyro);
 
 	return size;
@@ -1640,7 +1641,8 @@ static int r3gd20_probe(struct i2c_client *client,
 
 	int err = -1;
 
-	I("%s: probe start v03.\n", R3GD20_GYR_DEV_NAME);
+	I("%s: probe start v04-Fix L polling rate issue.\n",
+	  R3GD20_GYR_DEV_NAME);
 
 	
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
@@ -1863,8 +1865,13 @@ static int r3gd20_suspend(struct i2c_client *client, pm_message_t mesg)
 	u8 buf[2];
 	int err = -1;
 
-	data->is_suspended = 1;
-	I("%s++: data->is_suspended = %d\n", __func__, data->is_suspended);
+	if (data) {
+		data->is_suspended = 1;
+		I("%s++: data->is_suspended = %d\n", __func__, data->is_suspended);
+	} else {
+		E("%s: data = NULL\n", __func__);
+		return -EINVAL;
+	}
 
 #if DEBUG
 	I("r3gd20_suspend\n");
@@ -1893,7 +1900,7 @@ static int r3gd20_suspend(struct i2c_client *client, pm_message_t mesg)
 	
 
 #endif 
-	if (data && (data->pdata->power_LPM))
+	if (data->pdata->power_LPM)
 		data->pdata->power_LPM(1);
 
 	I("%s:--\n", __func__);

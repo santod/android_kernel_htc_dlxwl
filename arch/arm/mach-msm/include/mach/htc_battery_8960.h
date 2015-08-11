@@ -20,6 +20,7 @@
 
 #define ADC_REPLY_ARRAY_SIZE		5
 
+/* ioctl define */
 #define HTC_BATT_IOCTL_MAGIC		0xba
 
 #define DEBUG_LOG_LENGTH		1024
@@ -75,6 +76,7 @@ struct battery_vol_alarm {
 	int enable;
 };
 
+/* information about the system we're running on */
 extern unsigned int system_rev;
 
 enum {
@@ -121,6 +123,7 @@ struct htc_battery_platform_data {
 	int overload_vol_thr_mv;
 	int overload_curr_thr_ma;
 	int smooth_chg_full_delay_min;
+	int decreased_batt_level_check;
 	struct htc_gauge igauge;
 	struct htc_charger icharger;
 	int (*get_thermal_sensor_temp)(int sensor_num, unsigned long *temp);

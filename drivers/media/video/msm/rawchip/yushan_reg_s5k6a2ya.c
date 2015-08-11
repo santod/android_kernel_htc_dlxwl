@@ -18,6 +18,7 @@
 
 #include <linux/kernel.h>
 #include "Yushan_HTC_Functions.h"
+/* #define AFSU_DEBUG */
 
 uint8_t pdpclib_u_s5k6a2ya[] =
 {

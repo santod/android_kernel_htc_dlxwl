@@ -173,7 +173,7 @@ static ssize_t modem_silent_reset_info_store(struct device *dev,
 	snprintf(msr_info_list[mdm_msr_index].modem_errmsg, RD_BUF_SIZE, "%s", buf);
 	len = strlen(msr_info_list[mdm_msr_index].modem_errmsg);
 
-	if ( len == 0)
+	if ( len == 0 )
 	{
 		spin_unlock_irqrestore(&msr_info_lock, flags);
 		return count;
@@ -564,7 +564,7 @@ EXPORT_SYMBOL(get_mdm_errmsg);
 static int notify_mdm_nv_write_done(void)
 {
 	gpio_direction_output(mdm_drv->ap2mdm_ipc1_gpio, 1);
-	msleep(1);
+	udelay(1000);
 	gpio_direction_output(mdm_drv->ap2mdm_ipc1_gpio, 0);
 	return 0;
 }

@@ -798,7 +798,7 @@ static void sensor_irq_do_work(struct work_struct *work)
 	}
 
 	if (!(add & 0x3F)) { 
-		if (inter_error < 30) {
+		if (inter_error < 10) {
 			D("[PS][cm3629 warning]%s unkown interrupt: 0x%x!\n",
 			__func__, add);
 			inter_error++ ;
@@ -2367,6 +2367,21 @@ static ssize_t phone_status_store(struct device *dev,
 
 
         D("[PS][cm3629] %s: phone_status = %d\n", __func__, phone_status);
+
+	if (phone_status == 7) {
+		input_report_abs(lpi->ps_input_dev, ABS_DISTANCE, -1);
+		input_report_abs(lpi->ps_input_dev, ABS_DISTANCE, 7);
+		input_sync(lpi->ps_input_dev);
+		D("[PS][cm3629] %s: META for Proximity\n", __func__);
+		return count;
+	} else if (phone_status == 8) {
+		input_report_abs(lpi->ls_input_dev, ABS_MISC, -1);
+		input_report_abs(lpi->ls_input_dev, ABS_MISC, -2);
+		input_sync(lpi->ls_input_dev);
+		D("[LS][cm3629] %s: META for Lightsensor\n", __func__);
+		return count;
+	}
+
 	if (phone_status == 0)
 		oncall = 0;
 	else
@@ -2560,6 +2575,7 @@ int power_key_check_in_pocket(void)
 	D("[cm3629] %s ls_adc = %d, ls_level = %d, ls_dark %d\n", __func__, ls_adc, ls_level, ls_dark);
 
 	psensor_enable(lpi);
+	msleep(50);
 	ret = get_ps_adc_value(&ps1_adc, &ps2_adc);
 	if (ps1_adc > pocket_thd)
 		ps_near = 1;
@@ -2569,24 +2585,6 @@ int power_key_check_in_pocket(void)
 	psensor_disable(lpi);
 	pocket_mode_flag = 0;
 	return (ls_dark && ps_near);
-}
-
-int pocket_detection_check(void)
-{
-	struct cm3629_info *lpi = lp_info;
-
-	if (!is_probe_success) {
-		printk("[cm3629] %s return by cm3629 probe fail\n", __func__);
-		return 0;
-	}
-	pocket_mode_flag = 1;
-
-	psensor_enable(lpi);
-	D("[cm3629] %s ps_near = %d\n", __func__, ps_near);
-	psensor_disable(lpi);
-
-	pocket_mode_flag = 0;
-	return (ps_near);
 }
 
 int psensor_enable_by_touch_driver(int on)

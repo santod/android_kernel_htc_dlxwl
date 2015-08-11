@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,7 +27,7 @@
 #include <linux/spi/spi.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_data/qcom_crypto_device.h>
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 #include <linux/memory.h>
 #include <linux/memblock.h>
 #include <linux/msm_thermal.h>
@@ -128,18 +128,22 @@
 
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 #define HOLE_SIZE		0x20000
+#define MSM_ION_MFC_META_SIZE  0x40000 
 #ifdef CONFIG_MSM_IOMMU
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x280000
 #else
 #define MSM_PMEM_KERNEL_EBI1_SIZE  0x6400000
 #endif
-
+#ifdef CONFIG_MSM_IOMMU
+#define MSM_ION_MM_SIZE		0x6000000
+#else
+#define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
+#endif
 #define MSM_ION_KGSL_SIZE	0x6400000
 #define MSM_ION_SF_SIZE		(MSM_PMEM_SIZE + MSM_ION_KGSL_SIZE)
 #define MSM_ION_MM_FW_SIZE	(0x200000 - HOLE_SIZE) 
-#define MSM_ION_MM_SIZE		MSM_PMEM_ADSP_SIZE
 #define MSM_ION_QSECOM_SIZE	0x600000 
-#define MSM_ION_MFC_SIZE	SZ_8K
+#define MSM_ION_MFC_SIZE	(SZ_8K + MSM_ION_MFC_META_SIZE)
 #define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
 #define MSM_ION_HEAP_NUM	8
 

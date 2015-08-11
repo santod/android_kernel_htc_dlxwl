@@ -24,6 +24,7 @@
 #include "msm_gemini_common.h"
 #include "msm_gemini_hw.h"
 
+/* AXI rate in KHz */
 #define MSM_SYSTEM_BUS_RATE	160000
 struct ion_client *gemini_client;
 
@@ -53,7 +54,7 @@ uint32_t msm_gemini_platform_v2p(int fd, uint32_t len, struct file **file_p,
 		return 0;
 
 	rc = ion_map_iommu(gemini_client, *ionhandle, CAMERA_DOMAIN, GEN_POOL,
-			SZ_4K, 0, &paddr, (unsigned long *)&size, UNCACHED, 0);
+			SZ_4K, 0, &paddr, (unsigned long *)&size, 0, 0);
 #elif CONFIG_ANDROID_PMEM
 	unsigned long kvstart;
 	rc = get_pmem_file(fd, &paddr, &kvstart, &size, file_p);
@@ -68,7 +69,7 @@ uint32_t msm_gemini_platform_v2p(int fd, uint32_t len, struct file **file_p,
 		goto error1;
 	}
 
-	
+	/* validate user input */
 	if (len > size) {
 		GMN_PR_ERR("%s: invalid offset + len\n", __func__);
 		goto error1;
@@ -156,7 +157,7 @@ int msm_gemini_platform_init(struct platform_device *pdev,
 				ARRAY_SIZE(gemini_imem_clk_info), 1);
 		if (!rc)
 			pgmn_dev->hw_version = GEMINI_8960;
-#endif 
+#endif //!CONFIG_ARCH_MSM8X60
 	}
 
 	if (pgmn_dev->hw_version != GEMINI_7X) {

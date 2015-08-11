@@ -363,8 +363,7 @@ static void mdp4_dsi_video_wait4dmap(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
-	if (!wait_for_completion_timeout(&vctrl->dmap_comp, HZ / 5))
-		pr_err("wait4dmap timedout!\n");
+	wait_for_completion(&vctrl->dmap_comp);
 }
 
 
@@ -400,8 +399,7 @@ static void mdp4_dsi_video_wait4ov(int cndx)
 	if (atomic_read(&vctrl->suspend) > 0)
 		return;
 
-	if (!wait_for_completion_timeout(&vctrl->ov_comp, HZ /5))
-		pr_err("wait4ov timedout!\n");
+	wait_for_completion(&vctrl->ov_comp);
 }
 
 ssize_t mdp4_dsi_video_show_event(struct device *dev,
@@ -1089,8 +1087,9 @@ static void mdp4_dsi_video_do_blt(struct msm_fb_data_type *mfd, int enable)
 		tg_enabled = inpdw(MDP_BASE + DSI_VIDEO_BASE) & 0x01;
 		if (tg_enabled) {
 			mdp4_dsi_video_wait4vsync(cndx);
-			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
 			mdp4_dsi_video_wait4dmap_done(0);
+			MDP_OUTP(MDP_BASE + DSI_VIDEO_BASE, 0);
+			msleep(20);
 		}
 		mdp4_overlayproc_cfg(pipe);
 		mdp4_overlay_dmap_xy(pipe);

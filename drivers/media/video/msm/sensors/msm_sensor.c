@@ -78,8 +78,13 @@ static int oem_sensor_init(void *arg)
 #ifdef CONFIG_RAWCHIP
 	if (s_ctrl->sensordata->use_rawchip) {
 		rawchip_data.sensor_name = s_ctrl->sensordata->sensor_name;
-		rawchip_data.datatype = s_ctrl->curr_csi_params->csid_params.lut_params.vc_cfg->dt;
-		rawchip_data.lane_cnt = s_ctrl->curr_csi_params->csid_params.lane_cnt;
+		if (s_ctrl->curr_csi_params) {
+			rawchip_data.datatype = s_ctrl->curr_csi_params->csid_params.lut_params.vc_cfg->dt;
+			rawchip_data.lane_cnt = s_ctrl->curr_csi_params->csid_params.lane_cnt;
+		}
+		else {
+		pr_info("%s: s_ctrl->curr_csi_params is null\n", __func__);
+		}
 		rawchip_data.pixel_clk = s_ctrl->msm_sensor_reg->output_settings[res].op_pixel_clk;
 		rawchip_data.mirror_flip = s_ctrl->mirror_flip;
 
@@ -691,6 +696,14 @@ int32_t msm_sensor_setting_parallel(struct msm_sensor_ctrl_t *s_ctrl,
 	pr_info("%s: update_type=%d, res=%d\n", __func__, update_type, res);
 
 	if (update_type == MSM_SENSOR_REG_INIT) {
+		if(s_ctrl->sensor_id_info->sensor_id != 0x4581){
+		
+			if (s_ctrl->first_init)   {
+				pr_info("%s: MSM_SENSOR_REG_INIT already inited\n", __func__);
+				return rc;
+			}
+		}
+
 		mutex_lock(s_ctrl->sensor_first_mutex);  
 
 #ifdef CONFIG_RAWCHIPII
@@ -1152,8 +1165,13 @@ static int oem_sensor_init_ov(void *arg)
 #ifdef CONFIG_RAWCHIP
 		if (s_ctrl->sensordata->use_rawchip) {
 			rawchip_data.sensor_name = s_ctrl->sensordata->sensor_name;
-			rawchip_data.datatype = s_ctrl->curr_csi_params->csid_params.lut_params.vc_cfg->dt;
-			rawchip_data.lane_cnt = s_ctrl->curr_csi_params->csid_params.lane_cnt;
+			if (s_ctrl->curr_csi_params) {
+				rawchip_data.datatype = s_ctrl->curr_csi_params->csid_params.lut_params.vc_cfg->dt;
+				rawchip_data.lane_cnt = s_ctrl->curr_csi_params->csid_params.lane_cnt;
+			}
+			else {
+			pr_info("%s: s_ctrl->curr_csi_params is null\n", __func__);
+			}
 			rawchip_data.pixel_clk = s_ctrl->msm_sensor_reg->output_settings[res].op_pixel_clk;
 			rawchip_data.mirror_flip = s_ctrl->mirror_flip;
 
@@ -1207,6 +1225,10 @@ int32_t msm_sensor_setting_parallel_ov(struct msm_sensor_ctrl_t *s_ctrl,
 	pr_info("%s: update_type=%d, res=%d\n", __func__, update_type, res);
 
 	if (update_type == MSM_SENSOR_REG_INIT) {
+		if (s_ctrl->first_init)   {
+			pr_info("%s: MSM_SENSOR_REG_INIT already inited\n", __func__);
+			return rc;
+		}
 		mutex_lock(s_ctrl->sensor_first_mutex);  
 
 #ifdef CONFIG_RAWCHIPII
@@ -1960,8 +1982,8 @@ int32_t msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t rc = 0;
 	uint16_t chipid = 0;
-#if defined(CONFIG_MACH_MONARUDO) || defined(CONFIG_MACH_DELUXE_J) || defined(CONFIG_MACH_DELUXE_R) || defined(CONFIG_MACH_IMPRESSION_J)\
-		|| defined(CONFIG_MACH_DELUXE_U) || defined(CONFIG_MACH_DELUXE_UL) || defined(CONFIG_MACH_DELUXE_UB1)
+#if defined(CONFIG_MACH_MONARUDO) || defined(CONFIG_MACH_DUMMY) || defined(CONFIG_MACH_DELUXE_R) || defined(CONFIG_MACH_IMPRESSION_J)\
+		|| defined(CONFIG_MACH_DUMMY) || defined(CONFIG_MACH_DELUXE_UL) || defined(CONFIG_MACH_DUMMY)
 	int i=1;
 #else
 	int i=10;
@@ -2008,8 +2030,8 @@ int32_t msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 		}
 #endif
 	if (chipid != s_ctrl->sensor_id_info->sensor_id) {
-#if defined(CONFIG_MACH_MONARUDO) || defined(CONFIG_MACH_DELUXE_J) || defined(CONFIG_MACH_DELUXE_R) || defined(CONFIG_MACH_IMPRESSION_J)\
-    || defined(CONFIG_MACH_DELUXE_U) || defined(CONFIG_MACH_DELUXE_UL)
+#if defined(CONFIG_MACH_MONARUDO) || defined(CONFIG_MACH_DUMMY) || defined(CONFIG_MACH_DELUXE_R) || defined(CONFIG_MACH_IMPRESSION_J)\
+    || defined(CONFIG_MACH_DUMMY) || defined(CONFIG_MACH_DELUXE_UL)
 		if (chipid == 0x174 && s_ctrl->sensor_id_info->sensor_id == 0x175)
 		{
 			

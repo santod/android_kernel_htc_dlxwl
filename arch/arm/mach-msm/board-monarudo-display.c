@@ -15,7 +15,7 @@
 #include <linux/ioport.h>
 #include <linux/platform_device.h>
 #include <linux/bootmem.h>
-#include <linux/ion.h>
+#include <linux/msm_ion.h>
 #include <asm/mach-types.h>
 #include <mach/msm_memtypes.h>
 #include <mach/board.h>
@@ -796,7 +796,7 @@ static struct msm_panel_common_pdata mdp_pdata = {
 	.cont_splash_enabled = 0x01,
 	.mdp_iommu_split_domain = 1,
 	.mdp_gamma = monarudo_mdp_gamma,
-	.mdp_max_clk = 200000000,
+	.mdp_max_clk = 266667000,
 };
 
 static char wfd_check_mdp_iommu_split_domain(void)
@@ -1529,7 +1529,7 @@ static const struct i2c_device_id pwm_i2c_id[] = {
 static int pwm_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-	int rc;
+	int rc = 0;
 
 	if (!i2c_check_functionality(client->adapter,
 				     I2C_FUNC_SMBUS_BYTE | I2C_FUNC_I2C))

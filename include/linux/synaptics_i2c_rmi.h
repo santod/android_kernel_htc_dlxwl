@@ -16,10 +16,7 @@
 
 #ifndef _LINUX_SYNAPTICS_I2C_RMI_H
 #define _LINUX_SYNAPTICS_I2C_RMI_H
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-#include <linux/input.h>
-#include <linux/leds-pm8921.h>
-#endif
+
 #define SYNAPTICS_I2C_RMI_NAME "synaptics-rmi-ts"
 #define SYNAPTICS_T1007_NAME "synaptics-t1007"
 #define SYNAPTICS_T1021_NAME "synaptics-t1021"
@@ -79,10 +76,10 @@ struct synaptics_virtual_key {
 };
 
 struct synaptics_i2c_rmi_platform_data {
-	uint32_t version;	
-				
-				
-	int (*power)(int on);	
+	uint32_t version;	/* Use this entry for panels with */
+				/* (major << 8 | minor) version or above. */
+				/* If non-zero another array entry follows */
+	int (*power)(int on);	/* Only valid in first array entry */
 	int (*lpm_power)(int on);
 	struct synaptics_virtual_key *virtual_key;
 	uint8_t virtual_key_num;
@@ -94,20 +91,20 @@ struct synaptics_i2c_rmi_platform_data {
 	uint32_t key_area;
 	uint32_t flags;
 	unsigned long irqflags;
-	uint32_t inactive_left; 
-	uint32_t inactive_right; 
-	uint32_t inactive_top; 
-	uint32_t inactive_bottom; 
-	uint32_t snap_left_on; 
-	uint32_t snap_left_off; 
-	uint32_t snap_right_on; 
-	uint32_t snap_right_off; 
-	uint32_t snap_top_on; 
-	uint32_t snap_top_off; 
-	uint32_t snap_bottom_on; 
-	uint32_t snap_bottom_off; 
-	uint32_t fuzz_x; 
-	uint32_t fuzz_y; 
+	uint32_t inactive_left; /* 0x10000 = screen width */
+	uint32_t inactive_right; /* 0x10000 = screen width */
+	uint32_t inactive_top; /* 0x10000 = screen height */
+	uint32_t inactive_bottom; /* 0x10000 = screen height */
+	uint32_t snap_left_on; /* 0x10000 = screen width */
+	uint32_t snap_left_off; /* 0x10000 = screen width */
+	uint32_t snap_right_on; /* 0x10000 = screen width */
+	uint32_t snap_right_off; /* 0x10000 = screen width */
+	uint32_t snap_top_on; /* 0x10000 = screen height */
+	uint32_t snap_top_off; /* 0x10000 = screen height */
+	uint32_t snap_bottom_on; /* 0x10000 = screen height */
+	uint32_t snap_bottom_off; /* 0x10000 = screen height */
+	uint32_t fuzz_x; /* 0x10000 = screen width */
+	uint32_t fuzz_y; /* 0x10000 = screen height */
 	int abs_x_min;
 	int abs_x_max;
 	int abs_y_min;
@@ -176,13 +173,6 @@ enum {
 	INTR_SOURCE,
 	FUNCTION
 };
-extern uint8_t touchscreen_is_on(void);
 
-
-#ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_SWEEP2WAKE
-/* Sweep2Wake */
-extern void sweep2wake_setdev(struct input_dev * input_device);
-extern void sweep2wake_setleddev(struct led_classdev * led_dev);
-#endif
 extern uint8_t getPowerKeyState(void);
-#endif 
+#endif /* _LINUX_SYNAPTICS_I2C_RMI_H */

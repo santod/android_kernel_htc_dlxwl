@@ -323,11 +323,7 @@ static void android_work(struct work_struct *data)
 		kobject_uevent_env(&dev->dev->kobj, KOBJ_CHANGE, uevent_envp);
 		last_uevent = next_state;
 		pr_info("%s: sent uevent %s\n", __func__, uevent_envp[0]);
-		if (dev->pdata->vzw_unmount_cdrom) {
-			cancel_delayed_work(&cdev->cdusbcmd_vzw_unmount_work);
-			cdev->unmount_cdrom_mask = 1 << 3 | 1 << 4;
-			schedule_delayed_work(&cdev->cdusbcmd_vzw_unmount_work,30 * HZ);
-		}
+		pr_info("%s: skip trigger unmount uevent\n", __func__);
 	} else {
 		pr_info("%s: did not send uevent (%d %d %p)\n", __func__,
 			 dev->connected, dev->sw_connected, cdev->config);
@@ -518,11 +514,12 @@ static void adb_closed_callback(void)
 		mutex_unlock(&dev->mutex);
 }
 
+
 static void adb_read_timeout(void)
 {
 	struct android_dev *dev = _android_dev;
 
-	pr_info("%s: adb read timeout, re-connect to PC\n",__func__);
+	pr_info("%s: adb read timeout, re-connect to PC\n", __func__);
 
 	if (dev) {
 		android_disable(dev);
@@ -1321,7 +1318,7 @@ static int ncm_function_bind_config(struct android_usb_function *f,
 
     if (c->cdev->gadget)
         c->cdev->gadget->miMaxMtu = ETH_FRAME_LEN_MAX - ETH_HLEN;
-	ret = gether_setup_name(c->cdev->gadget, ncm->ethaddr, "usb");
+	ret = gether_setup_name(c->cdev->gadget, ncm->ethaddr, "ncm");
 	if (ret) {
 		pr_err("%s: gether_setup failed\n", __func__);
 		return ret;
@@ -1407,7 +1404,7 @@ rndis_function_init(struct android_usb_function *f,
 	if (dev->pdata && dev->pdata->manufacturer_name)
 		strncpy(rndis->manufacturer,
 			dev->pdata->manufacturer_name,
-			sizeof(rndis->manufacturer));
+			sizeof(rndis->manufacturer) - 1);
 	rndis->vendorID = dev->pdata->vendor_id;
 
 	return 0;
@@ -1435,7 +1432,11 @@ rndis_function_bind_config(struct android_usb_function *f,
 		rndis->ethaddr[0], rndis->ethaddr[1], rndis->ethaddr[2],
 		rndis->ethaddr[3], rndis->ethaddr[4], rndis->ethaddr[5]);
 
-	ret = gether_setup_name(c->cdev->gadget, rndis->ethaddr, "usb");
+	if (rndis->ethaddr[0])
+		ret = gether_setup_name(c->cdev->gadget, NULL, "usb");
+	else
+		ret = gether_setup_name(c->cdev->gadget, rndis->ethaddr,
+								"usb");
 	if (ret) {
 		pr_err("%s: gether_setup failed\n", __func__);
 		return ret;
@@ -2460,15 +2461,13 @@ static ssize_t bugreport_debug_store(struct device *pdev,
 	sscanf(buff, "%d", &enable);
 	ats = board_get_usb_ats();
 
-	if (enable == 5 && ats)
+	if (enable && ats)
 		bugreport_debug = 1;
-	else if (enable == 0 && ats) {
+	else {
 		bugreport_debug = 0;
 		del_timer(&adb_read_timer);
 	}
-
-	pr_info("bugreport_debug = %d, enable = %d, ats = %d\n", bugreport_debug, enable, ats);
-
+	pr_info("bugreport_debug = %d, enable=%d, ats = %d\n", bugreport_debug, enable, ats);
 	return size;
 }
 
